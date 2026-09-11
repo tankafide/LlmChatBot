@@ -78,6 +78,16 @@ class DeterministicAcceptanceRunner:
                 reply=self._details(vehicle),
                 replay_json='{"messages_json":"[]"}',
             )
+        if "AA-1001" in request.text:
+            vehicle = await asyncio.to_thread(
+                self._inventory.get_by_source_id, request.dealership_id, "AA-1001"
+            )
+            return ChatRunResult(
+                reply=f"Selected {self._identity(vehicle)}.",
+                replay_json='{"messages_json":"[]"}',
+                selection_action="set",
+                selected_vehicle_id=vehicle.id,
+            )
         if request.presented_vehicle_ids:
             vehicle_id = request.presented_vehicle_ids[0]
             vehicle = await asyncio.to_thread(
@@ -117,7 +127,12 @@ class DeterministicAcceptanceRunner:
             if vehicle.price_cents is None
             else f"${vehicle.price_cents // 100:,}.{vehicle.price_cents % 100:02d}"
         )
-        return f"{cls._identity(vehicle)} — price: {price}"
+        mileage = "unknown" if vehicle.mileage is None else f"{vehicle.mileage:,} miles"
+        drivetrain = vehicle.drivetrain or "unknown"
+        return (
+            f"{cls._identity(vehicle)} — price: {price}; "
+            f"mileage: {mileage}; drivetrain: {drivetrain}"
+        )
 
 
 def runner_factory(

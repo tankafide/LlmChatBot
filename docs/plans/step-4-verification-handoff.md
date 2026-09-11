@@ -1,7 +1,10 @@
 # Step 4: Assignment verification and handoff
 
 Created: 2026-09-10 (America/Chicago).
-Status: detailed implementation plan; implementation and acceptance checks pending.
+Status: presentation-readiness implementation in progress; CI work explicitly deferred by the
+user on 2026-09-11. The current slice prioritizes a reviewer-oriented backend README, demo asset,
+and a focused end-to-end assignment-flow check. Remaining packaging/container-handoff items stay
+planned but are not part of this narrowed request.
 Parent: [Product roadmap, step 4](product-roadmap.md#4-assignment-verification-and-handoff).
 Prerequisites: verified [step 2](step-2-conversational-inventory.md) and [step 3](step-3-nhtsa-safety.md), building on [step 1](step-1-foundation-inventory.md).
 
