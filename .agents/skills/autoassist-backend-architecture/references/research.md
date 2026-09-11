@@ -1,6 +1,6 @@
 # Backend architecture research
 
-Checked 2026-09-10 (America/Chicago). These sources support execution and library boundaries; module placement, the single-worker constraint, and lifecycle outcomes are project decisions in the shared baseline, not universal framework requirements.
+Checked 2026-09-10 (America/Chicago). These sources support execution and library boundaries; module placement, worker coordination, and lifecycle outcomes are project decisions in the shared baseline, not universal framework requirements.
 
 - [FastAPI async technical details](https://fastapi.tiangolo.com/async/#other-utility-functions): framework-managed synchronous handlers/dependencies and directly called helpers have different execution behavior. Agent failure to prevent: assuming a synchronous repository call inside async orchestration uses a thread automatically. Require a traced offload boundary and responsiveness evidence.
 - [SQLAlchemy session basics](https://docs.sqlalchemy.org/en/20/orm/session_basics.html): sessions hold mutable transactional state; each concurrent thread/task needs its own session, with scoped cleanup. Application-level transaction framing supports repository composition. Project application: inject a factory and offload the whole synchronous unit, returning materialized application records.

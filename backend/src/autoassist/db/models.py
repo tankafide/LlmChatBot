@@ -103,6 +103,7 @@ class ChatRequest(Base):
             "conversation_id",
             unique=True,
             sqlite_where=text("status = 'in_progress'"),
+            postgresql_where=text("status = 'in_progress'"),
         ),
         Index(
             "ix_chat_request_completed_turns",

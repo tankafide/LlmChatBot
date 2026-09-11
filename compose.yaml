@@ -20,11 +20,15 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      AUTOASSIST_DATABASE_URL: postgresql+psycopg://autoassist:${POSTGRES_PASSWORD:-autoassist-dev}@database:5432/autoassist
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - autoassist-data:/data
       - ./config/dealerships.json:/app/config/dealerships.json:ro
+    depends_on:
+      database:
+        condition: service_healthy
     stop_grace_period: 30s
     healthcheck:
       test:
@@ -37,16 +41,50 @@ services:
       retries: 10
       start_period: 5s
 
+  database:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: autoassist
+      POSTGRES_USER: autoassist
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autoassist-dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - autoassist-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoassist -d autoassist"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   verify:
     profiles: ["verify"]
     build:
       context: .
       dockerfile: Dockerfile.verify
     environment:
-      AUTOASSIST_DATABASE_URL: sqlite:////tmp/autoassist-check.db
+      AUTOASSIST_TEST_POSTGRES_URL: postgresql+psycopg://autoassist:verify-only@verify-database:5432/autoassist_verify
       AUTOASSIST_CONFIG_FILE: /workspace/config/dealerships.json
     volumes:
       - ./docs/context/inventory:/workspace/docs/context/inventory:ro
+    depends_on:
+      verify-database:
+        condition: service_healthy
+
+  verify-database:
+    profiles: ["verify"]
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: autoassist_verify
+      POSTGRES_USER: autoassist
+      POSTGRES_PASSWORD: verify-only
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoassist -d autoassist_verify"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
 
 volumes:
-  autoassist-data:
+  autoassist-postgres:

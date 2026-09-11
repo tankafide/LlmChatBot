@@ -83,7 +83,7 @@ class RuntimeConfig(BaseModel):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AUTOASSIST_", extra="ignore")
 
-    database_url: str = "sqlite:///data/autoassist.db"
+    database_url: str = "postgresql+psycopg://autoassist:autoassist-dev@127.0.0.1:5432/autoassist"
     config_file: Path = Path("config/dealerships.json")
 
 

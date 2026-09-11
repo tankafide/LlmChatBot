@@ -6,8 +6,8 @@ WORKDIR /app
 
 RUN groupadd --gid 10001 autoassist \
     && useradd --uid 10001 --gid autoassist --create-home autoassist \
-    && mkdir -p /data /app/config \
-    && chown -R autoassist:autoassist /data /app
+    && mkdir -p /app/config \
+    && chown -R autoassist:autoassist /app
 
 COPY --chown=autoassist:autoassist backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-install-project
@@ -21,8 +21,7 @@ USER autoassist
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     AUTOASSIST_CONFIG_FILE=/app/config/dealerships.json \
-    AUTOASSIST_DATABASE_URL=sqlite:////data/autoassist.db
+    AUTOASSIST_DATABASE_URL=postgresql+psycopg://autoassist:autoassist-dev@database:5432/autoassist
 
 EXPOSE 8000
-CMD ["uvicorn", "autoassist.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-graceful-shutdown", "10"]
-
+CMD ["uvicorn", "autoassist.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-graceful-shutdown", "10"]

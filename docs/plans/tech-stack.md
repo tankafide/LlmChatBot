@@ -1,17 +1,13 @@
-# Tech stack decision
+# Tech stack decisions
 
-Accepted: Pydantic AI for backend LLM orchestration, assistant-ui for the React chat interface, and openapi-typescript for frontend API types generated from FastAPI's OpenAPI schema. The [shared stack baseline](../stack-baseline.md) contains the authoritative baseline and library boundaries; tech-stack remains the explicit-only decision workflow.
+The [shared stack baseline](../stack-baseline.md) owns runtime choices and lifecycle contracts. The tech-stack skill is the explicit-only decision workflow.
 
-During implementation, connect ordinary inventory/NHTSA services through thin tools and connect assistant-ui to the FastAPI API through a custom adapter. Keep SQLite authoritative for persisted conversations and isolate library message formats from public schemas. Verify compatible package versions when scaffolding.
+- FastAPI exposes the HTTP API. Pydantic AI adapts configured OpenAI, Google, and xAI models through thin tools over inventory/NHTSA services. Server configuration selects the default connection; provider message formats stay separate from public schemas.
+- PostgreSQL and synchronous SQLAlchemy own inventory, conversations, messages, selected-vehicle context, and durable request replay. Two Uvicorn workers share the database. Constraints enforce one active request per conversation; row locks protect terminal transitions; an advisory lock serializes schema/bootstrap startup.
+- Recovery interrupts only requests older than 120 seconds, at startup or on a scoped submission. This is an age threshold, not worker-liveness detection. Completed outcomes remain replayable and external work is not automatically resumed.
+- Complete database units run in worker threads with independent sessions. Application services own short transactions, and no transaction spans an external-service wait.
+- React and assistant-ui ExternalStoreRuntime present backend-owned conversation state. Native fetch consumes generated openapi-typescript types with runtime validation. The shared verifier checks API drift and runs Playwright browser tests.
+- Docker Desktop and Compose are the standard workflow. Start Desktop with `docker desktop start --detach --timeout 120` and verify `docker info`. PostgreSQL owns its named volume; ordinary restart/recreation preserves data. Schema changes require explicit development database recreation without a migration framework.
+- Verification uses isolated PostgreSQL for coordination/recovery and temporary SQLite for focused behavioral tests. The importer reads all 127 source rows from `docs/context/inventory/data.csv`. `python scripts/verify.py` is the shared local/CI check entry point.
 
-When scaffolding the frontend, add reproducible type generation and a schema/type drift check to the shared verification command. Use the generated types in the fetch adapter and commit the generated type file.
-
-The initial provider is xAI/Grok. The supplied inventory is preserved at `docs/context/inventory/data.csv`; its importer remains pending. The backend foundation and inventory search API are implemented.
-
-Accepted: async orchestration offloads complete synchronous database units to worker threads. Sessions are created, used, and closed within one unit; factories supply independent sessions to concurrent tools. Application services own short transactions; no transaction spans external-service waits. Follow the authoritative [database execution rules](../stack-baseline.md#database-execution-and-session-ownership).
-
-Accepted: non-streaming chat uses one backend worker per SQLite volume, database-enforced admission of one active request per conversation, and client request IDs for persisted outcome replay. Provider failures preserve admitted user messages; startup marks unfinished requests interrupted without rerunning them. The [request lifecycle acceptance table](../stack-baseline.md#chat-request-lifecycle) defines responses, retries, history, and recovery. Implement its focused concurrency/failure/durability tests with the first chat persistence slice; these behaviors are not implemented yet.
-
-Accepted: Docker Desktop on this Windows machine and Docker Compose are the standard build/run/verification workflow, replacing the earlier Docker deferral. Use a backend container with uv and the committed Python lockfile; add the frontend development container using npm and its lockfile when the UI is implemented. Start Desktop with `docker desktop start --detach --timeout 120` and verify readiness with `docker info`; `desktop-linux` is Docker Desktop's internal context name, not a separate Linux setup. Keep SQLite in a named data volume mounted by the backend; ordinary restarts, container recreation, and rebuilds must preserve conversations. Database reset is a separate explicit operation.
-
-Dockerfiles, `.dockerignore`, Compose configuration, runtime environment examples, and concrete README setup/run/check/reset commands now exist. Keep browser URLs distinct from Compose service names, prevent host dependency mounts from hiding container dependencies, and run checks against isolated test storage. Validate configuration, clean image builds, API connectivity, and persisted state after container recreation. CI will run the shared container-based verification entry point when added.
+See the README for current setup, import, run, verification, and database recreation commands.

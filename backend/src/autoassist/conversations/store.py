@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.exc import OperationalError
@@ -33,18 +34,35 @@ from autoassist.db.database import SessionFactory
 
 
 class ConversationStore:
-    def __init__(self, session_factory: SessionFactory, repository: ConversationRepository) -> None:
+    def __init__(
+        self,
+        session_factory: SessionFactory,
+        repository: ConversationRepository,
+        *,
+        stale_request_seconds: float = 0.0,
+    ) -> None:
         self._session_factory = session_factory
         self._repository = repository
         self._write_lock = threading.Lock()
+        self._stale_request_seconds = stale_request_seconds
 
-    def recover_interrupted(self) -> int:
+    def recover_interrupted(self, conversation_id: str | None = None) -> int:
         now = utc_now()
+        stale_before = (
+            datetime.now(UTC) - timedelta(seconds=self._stale_request_seconds)
+        ).isoformat(timespec="microseconds")
         body = canonical_json(
             error_body("request_interrupted", "The request was interrupted before completion.")
         )
         with self._session_factory.begin() as session:
-            return self._repository.recover_interrupted(session, now, body)
+            return self._repository.recover_interrupted(
+                session, now, stale_before, body, conversation_id
+            )
+
+    def recover_stale(self, conversation_id: str) -> int:
+        if self._stale_request_seconds <= 0:
+            return 0
+        return self.recover_interrupted(conversation_id)
 
     def dealership_connection(self, dealership_id: str) -> str | None:
         with self._session_factory() as session:

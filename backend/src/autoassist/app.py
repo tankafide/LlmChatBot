@@ -22,6 +22,7 @@ from autoassist.db.bootstrap import bootstrap_dealerships
 from autoassist.db.database import (
     check_storage,
     create_database_engine,
+    database_startup_lock,
     initialize_schema,
     make_session_factory,
 )
@@ -37,6 +38,7 @@ def create_app(
     settings: Settings | None = None, *, runner_factory: RunnerFactory | None = None
 ) -> FastAPI:
     configured_settings = settings
+    run_timeout_seconds = 60.0
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -48,8 +50,9 @@ def create_app(
         runners: dict[str, ChatRunner] = {}
         try:
             app.state.safety_service = SafetyService(NhtsaClient(nhtsa_client))
-            initialize_schema(engine)
-            bootstrap_dealerships(session_factory, runtime_config)
+            with database_startup_lock(engine):
+                initialize_schema(engine)
+                bootstrap_dealerships(session_factory, runtime_config)
             check_storage(session_factory)
             app.state.engine = engine
             app.state.session_factory = session_factory
@@ -70,11 +73,18 @@ def create_app(
                     if isinstance(runner, PydanticChatRunner):
                         runner.set_safety_service(app.state.safety_service)
                     runners[name] = runner
-            conversation_store = ConversationStore(session_factory, ConversationRepository())
+            conversation_store = ConversationStore(
+                session_factory,
+                ConversationRepository(),
+                stale_request_seconds=(
+                    run_timeout_seconds + 60.0 if engine.dialect.name == "postgresql" else 0.0
+                ),
+            )
             conversation_service = ConversationService(
                 conversation_store,
                 runtime_config,
                 runners,
+                run_timeout_seconds=run_timeout_seconds,
             )
             conversation_store.recover_interrupted()
             app.state.conversation_service = conversation_service

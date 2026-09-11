@@ -98,6 +98,7 @@ class ConversationService:
         self, dealership_id: str, conversation_id: str, request_id: str, text: str
     ) -> TerminalOutcome:
         try:
+            await asyncio.to_thread(self._store.recover_stale, conversation_id)
             existing, conversation = await asyncio.to_thread(
                 self._store.inspect, dealership_id, conversation_id, request_id
             )

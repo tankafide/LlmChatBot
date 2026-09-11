@@ -11,8 +11,9 @@ not the center of the design.
 The backend is intentionally modest in infrastructure and strong in boundaries. FastAPI handles
 transport, ordinary Python services own business rules, SQLAlchemy owns relational persistence,
 Pydantic AI coordinates model tool use, and a narrow HTTPX adapter owns NHTSA traffic. Conversations,
-request outcomes, model replay units, and vehicle selection live in SQLite, so process restarts do
-not erase context or cause completed requests to run twice.
+request outcomes, model replay units, and vehicle selection live in PostgreSQL, so process restarts
+do not erase context or cause completed requests to run twice. Database constraints and row locks
+coordinate multiple backend workers without holding a transaction across model or NHTSA waits.
 
 ## Technology choices
 
@@ -20,13 +21,13 @@ not erase context or cause completed requests to run twice.
 | --- | --- | --- |
 | Python 3.13 | Backend runtime | Clear domain code, mature API/data tooling, and a good fit for a focused system that must remain easy to explain. |
 | FastAPI + Uvicorn | HTTP API and application lifecycle | Typed request validation and OpenAPI come from the same schemas used by the running app. Lifespan provides one explicit place to construct and close database and network resources. |
-| Pydantic v2 + pydantic-settings | API contracts and configuration | Strict validation keeps malformed requests and configuration out of the application core. Secrets are referenced by environment-variable name, not stored in source or SQLite. |
-| SQLAlchemy 2 + SQLite | Relational persistence | SQLAlchemy provides explicit sessions, transactions, constraints, and testable queries. File-backed SQLite gives the prototype real restart durability without adding a database service. |
+| Pydantic v2 + pydantic-settings | API contracts and configuration | Strict validation keeps malformed requests and configuration out of the application core. Secrets are referenced by environment-variable name, not stored in source or the database. |
+| SQLAlchemy 2 + PostgreSQL | Relational persistence and worker coordination | PostgreSQL provides durable shared state, portable constraints, row-level locking, and independent connection pools for multiple workers. SQLite provides fast isolated test fixtures. |
 | Pydantic AI | LLM orchestration | Typed tools, structured output validation, repair requests, and model-history support let the model choose intent while the application retains control of facts and state. |
 | OpenAI Responses API | Default model integration | The checked-in default uses a native tool-capable model connection. Gemini and xAI adapters demonstrate that provider choice remains server-owned configuration. |
 | HTTPX | NHTSA integration | Async streaming responses, granular timeouts, connection pooling, and deterministic mock transports make the external boundary both bounded and testable. |
-| pytest, Ruff, and mypy | Backend verification | Tests exercise real temporary SQLite files and fake only external services; lint, format, and strict typing keep the walkthrough surface clean. |
-| Docker Compose + uv | Reproducible execution | Locked Python dependencies, a non-root runtime image, a single backend worker, and a named SQLite volume make setup and restart behavior repeatable. |
+| pytest, Ruff, and mypy | Backend verification | Tests exercise temporary SQLite files plus a real isolated PostgreSQL coordination test and fake only external model/NHTSA services. |
+| Docker Compose + uv | Reproducible execution | Locked Python dependencies, a non-root runtime image, two backend workers, and a named PostgreSQL volume make setup and restart behavior repeatable. |
 | React + assistant-ui | Thin demo client | It makes the API easy to show while leaving conversation authority, validation, and persistence in the backend. |
 
 ## How the backend is organized
@@ -40,7 +41,7 @@ Conversation / inventory application services
     ↓
 Repositories and short SQLAlchemy transaction units
     ↓
-SQLite
+PostgreSQL
 
 Conversation service
     ↓
@@ -94,10 +95,10 @@ This produces useful failure semantics:
 | Same ID with different text | `409 request_id_conflict`; no message is appended. |
 | Another request while the conversation is active | `409 conversation_busy`; the rejected request is not persisted as chat history. |
 | Provider failure or timeout after admission | The user message remains, a sanitized terminal failure is stored, and no fictional assistant message is created. |
-| Process stops after admission but before completion | Startup marks the request interrupted and releases the claim. The backend never silently reruns external work. |
+| Worker stops after admission but before completion | Other workers leave the fresh request alone. Once its 120-second age threshold expires, startup or the next submission marks it interrupted and releases the claim; external work is never silently rerun. |
 | Completion committed but the response was lost | Retrying the same ID returns the stored success without duplicating messages. |
 
-SQLite is the source of truth for the transcript and model replay context. Failed and interrupted
+PostgreSQL is the source of truth for the transcript and model replay context. Failed and interrupted
 user messages remain visible to the customer but are excluded from future model input. Public
 history can grow and page independently; model context retains only bounded, complete turns so a
 tool call is never separated from its result.
@@ -167,6 +168,7 @@ docker desktop start --detach --timeout 120
 docker info
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose build backend frontend
+docker compose up -d database
 docker compose stop backend
 $inventoryCsv = (Resolve-Path docs/context/inventory/data.csv).Path
 docker compose run --rm --no-deps -v "${inventoryCsv}:/tmp/inventory.csv:ro" backend autoassist-import-inventory --file /tmp/inventory.csv --dealership mia-motors --server-stopped
@@ -184,22 +186,24 @@ Stop normally without deleting data:
 docker compose down
 ```
 
-The `autoassist-data` named volume contains the SQLite database and its sidecars. Ordinary container
-or image recreation preserves it. Do not run two backend processes against the same volume.
+The `autoassist-postgres` named volume contains PostgreSQL data. Ordinary backend, database-container,
+or image recreation preserves it. The backend runs two Uvicorn workers against that shared store.
 
 ## Run the backend locally
 
-Prerequisites are Python 3.13 and uv 0.8.13. From the repository root:
+Prerequisites are Python 3.13, uv 0.8.13, and the Compose PostgreSQL service. From the repository
+root:
 
 ```powershell
 uv sync --project backend --frozen
 $env:OPENAI_API_KEY = "YOUR_LOCAL_KEY"
+docker compose up -d database
 uv run --project backend autoassist-import-inventory --file docs/context/inventory/data.csv --dealership mia-motors --server-stopped
-uv run --project backend uvicorn autoassist.main:app --host 127.0.0.1 --port 8000 --workers 1
+uv run --project backend uvicorn autoassist.main:app --host 127.0.0.1 --port 8000 --workers 2
 ```
 
-Local defaults use `config/dealerships.json` and `data/autoassist.db`. Override them with
-`AUTOASSIST_CONFIG_FILE` and `AUTOASSIST_DATABASE_URL`.
+Local defaults use `config/dealerships.json` and PostgreSQL on `127.0.0.1:5432`. Override them with
+`AUTOASSIST_CONFIG_FILE` and `AUTOASSIST_DATABASE_URL`. The example credentials are development-only.
 
 ## Walk through the HTTP API
 
@@ -274,7 +278,7 @@ $replayed = Invoke-RestMethod -Method Post $messagesUrl `
 
 To demonstrate restart continuity, run `docker compose restart backend`, request history again, and
 send a fresh follow-up such as `What is its price?`. The transcript and selected vehicle remain in
-SQLite.
+PostgreSQL.
 
 ### API surface
 
@@ -304,7 +308,8 @@ The default OpenAI client has a 30-second SDK timeout and disables SDK retries i
 60-second turn deadline. Each turn is further bounded to six model requests, eight tool calls,
 2,048 output tokens per model response, 16 KiB tool results, 64 KiB retained model history, 128 KiB
 model request envelopes, and an 8,000-character public reply. Four conversations may run model work
-at once in this single process; there is no queue.
+at once per worker; the development container therefore permits up to eight active turns across its
+two workers. There is no global queue or cross-instance admission cap.
 
 ## Verification
 
@@ -317,9 +322,13 @@ uv run --project backend mypy backend/src
 uv run --project backend pytest backend/tests -q
 ```
 
-The tests use real temporary, file-backed SQLite databases. Model and NHTSA fakes sit at external
-boundaries while real HTTP routes, application services, repositories, transactions, grounding,
-rendering, and recovery behavior execute. Coverage includes the complete source CSV import,
+Most tests use real temporary, file-backed SQLite databases for speed. The shared Docker verifier
+also runs isolated PostgreSQL tests for admission, terminal settlement, completion racing recovery
+in both lock orders, concurrent schema/bootstrap startup, and abrupt worker termination with
+fresh-request protection and stale recovery. Index-predicate validation and connection-failure
+HTTP responses have regression coverage. Model and NHTSA fakes sit at external boundaries while real HTTP routes,
+application services, repositories, transactions, grounding, rendering, and recovery behavior
+execute. Coverage includes the complete source CSV import,
 combined filters, dealership isolation, contextual selection, both safety branches, malformed and
 unavailable upstream data, idempotent terminal replay, concurrency, cancellation, commit faults,
 application recreation, and abrupt process termination.
@@ -341,26 +350,32 @@ docker compose -f compose.safety-live.yaml run --build --rm safety-live
 
 This prototype deliberately has no migration framework. Ordinary startup creates missing tables
 and preserves compatible data; it never resets inventory or conversations. Existing tables are
-checked for required columns and indexes before bootstrap or recovery writes.
+checked for required columns and indexes, including exact supported index predicates, before
+bootstrap or recovery writes.
 
-After a schema change, stop the backend and recreate only the intended development database. For a
-local run, back up if needed and remove `data/autoassist.db` plus its SQLite sidecars. For Docker,
-resolve the exact Compose volume with `docker volume ls`, verify that it is the AutoAssist development
-volume, and remove only that volume. Reimport the source CSV afterward. Normal
+After a schema change, stop the backend and recreate only the intended development database. Back up
+anything needed, run `docker compose down`, resolve the exact Compose volume with
+`docker volume ls`, verify that it is this project's `autoassist-postgres` development volume, and
+remove only that volume. Start `database`, then reimport the source CSV. Normal
 `docker compose down` must not use `--volumes`.
 
 ## Deliberate limits
 
 - Dealership IDs provide data routing and isolation, not authentication or production authorization.
-- One Uvicorn worker owns one SQLite volume. Multi-worker coordination, horizontal scaling, high
-  availability, backups, and disaster recovery are outside this local prototype.
+- PostgreSQL coordinates multiple workers and permits multiple stateless backend instances, but
+  the development Compose file exposes one two-worker backend. A production load balancer,
+  authentication, database high availability, backups, and disaster recovery remain out of scope.
 - NHTSA model-level data does not establish VIN-specific recall applicability, repair completion,
   or a safety guarantee. Inventory does not contain VINs or comparison weight.
 - NHTSA data may be partial, unrated, stale, unavailable, or ambiguous. There is no background
   refresh, cross-turn safety cache, bulk scan, or nearest-year guessing.
 - Conversation creation itself is not idempotent. Message submission is idempotent by request ID.
-- Interrupted model work is not automatically resumed. The admitted user message is retained and a
-  deliberate new attempt needs a new request ID.
+- Interrupted model work is not automatically resumed. Fresh work has a 120-second protection
+  window; stale work is marked interrupted on startup or the next submission. The admitted user
+  message is retained and a deliberate new attempt needs a new request ID. This is an age-based
+  recovery policy, not worker-liveness detection or a renewable lease. Hosts sharing the database
+  need synchronized clocks; a stalled live request can exceed the threshold, and its late
+  completion cannot overwrite an already settled outcome.
 - Uncommitted provider output can be lost. Exactly-once external execution is not promised; durable
   terminal replay prevents completed application requests from being repeated.
 - The UI is a localhost demonstration: no authentication, streaming, attachments, voice,
@@ -377,8 +392,8 @@ The most useful code-review path is:
 3. Inspect the SQLAlchemy constraints that enforce request identity and one active request.
 4. Follow `PydanticChatRunner` through typed tools, evidence validation, and deterministic rendering.
 5. Trace one NHTSA request through transport bounds, parsing, matching, and safety presentation.
-6. Finish in the recovery and HTTP integration tests, where the same SQLite file is reopened after
-   application or process termination.
+6. Finish in the recovery and HTTP integration tests, including the real PostgreSQL cross-worker
+   admission and terminal-write race.
 
 That route shows the core design claim: the backend lets an LLM interpret conversation, but keeps
 scope, facts, transactions, durable state, error meaning, and recovery under ordinary application

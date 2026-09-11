@@ -5,7 +5,7 @@ Build a clear, working prototype of an LLM-powered dealership chatbot exposed th
 - Search inventory in a relational database by a useful combination of make, model, year, price, and body type.
 - Answer follow-up questions about a specific vehicle using inventory data and conversation context.
 - Integrate NHTSA safety information: both recalls and crash-test ratings.
-- Persist every conversation and message in the relational database; conversation state must survive server restarts.
+- Persist every conversation and message in PostgreSQL; conversation state must survive server restarts. Database constraints and row locks coordinate workers; startup and scoped submissions recover only stale requests.
 - Include a README with setup/run instructions, configuration, API examples, design decisions, testing, and known omissions.
 
 Favor a small, complete system that is easy to explain and defend. The source inventory is stored at `docs/context/inventory/data.csv`; inspect and import that file rather than inventing project data.
@@ -23,7 +23,8 @@ Favor a small, complete system that is easy to explain and defend. The source in
 - Confirm readiness with `docker info` before running Compose. If startup fails, inspect Docker Desktop logs and runtime state; do not factory-reset or delete images, volumes, or application data without explicit authorization.
 
 ## Implemented commands
-- Run locally: `uv run --project backend uvicorn autoassist.main:app --host 127.0.0.1 --port 8000 --workers 1`.
+- Start local storage: `docker compose up -d database`.
+- Run locally: `uv run --project backend uvicorn autoassist.main:app --host 127.0.0.1 --port 8000 --workers 2`.
 - Import locally with the server stopped: `uv run --project backend autoassist-import-inventory --file docs/context/inventory/data.csv --dealership mia-motors --server-stopped`.
 - Run in Docker: `docker compose up --build -d backend frontend`, then open `http://localhost:5173`; stop without deleting data using `docker compose down`.
 - Shared verification: `python scripts/verify.py` builds and runs the isolated Compose verifier for both backend and frontend.

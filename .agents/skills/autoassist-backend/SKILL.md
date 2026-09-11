@@ -21,7 +21,7 @@ Inspect existing routes, dependencies, settings, and callers before adding anoth
 - Await network I/O using injected async clients. A synchronous helper called from an async route still blocks: offload each complete synchronous database unit, including session creation through close, to its worker thread. Inject session factories rather than live sessions and return materialized records. Never hold a transaction across external awaits.
 - Keep trivial pure helpers synchronous. Threads protect responsiveness for blocking I/O; they are not a general CPU scaling strategy. Identify substantial CPU work and worker saturation before adding machinery.
 - Own reusable HTTPX clients in lifespan and close them there; do not instantiate clients per tool call or in loops. Set connect/read/write/pool timeouts and bounded connection limits. HTTPX phase timeouts are not a whole-turn deadline: bound total run duration and concurrent work separately, coordinating provider/tool budgets with [chat-agent](../autoassist-chat-agent/SKILL.md).
-- Bound admission/queued work and document overload behavior for the affected path. Keep the accepted single-worker, exclusive SQLite-volume assumption; additional workers require a separate coordination/storage decision, not a throughput toggle.
+- Bound admission/queued work and document overload behavior for the affected path. PostgreSQL owns cross-worker durable coordination; in-memory limiters remain per-worker and must not be described as a global admission cap.
 
 ## Startup, shutdown, and configuration
 

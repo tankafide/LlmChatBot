@@ -37,14 +37,17 @@ application lifespan and disposed at shutdown; OpenAPI generation therefore need
 external service.
 
 Startup loads and validates server-owned connection/dealership configuration, creates missing
-tables, and bootstraps dealerships in one transaction. UUIDs and vehicles are retained across
-restart. SQLite foreign keys and a five-second busy timeout are enabled on each connection. The
-runtime assumes one process owns a database volume.
+tables, and bootstraps dealerships. A PostgreSQL advisory lock serializes those operations across
+workers. UUIDs and vehicles are retained across restart. PostgreSQL is the deployed shared store;
+SQLite foreign keys and a five-second busy timeout are enabled for isolated tests. Startup checks
+required index columns, uniqueness, and exact supported predicates; PostgreSQL catalog casts are
+accepted without accepting different operators or added conditions.
 
 ## Shared API boundary
 
 - `GET /health` checks local storage with bounded reads across mapped tables. Health and inventory
-  services share SQLite result-code classification for expected availability failures;
+  services share dialect-aware classification for expected storage availability failures, including
+  psycopg connection failures without a server SQLSTATE;
   unexpected SQL/schema errors propagate to the server's error handling and diagnostics.
 - `GET /dealerships` exposes UUID, slug, and display name, but no connection or credential data.
 - `GET /dealerships/{dealership_id}/vehicles` performs bounded combined search and UUID cursor
@@ -77,13 +80,17 @@ async conversation route (`api/routes.py`)
 `ConversationService` coordinates creation, admission, terminal replay, provider deadlines,
 and failure/cancellation settlement. It contains no SQL, ORM models, or live sessions.
 `ConversationStore` is the synchronous application transaction boundary: it owns sessions,
-write serialization, commit/rollback, admission reconciliation, completion, and startup recovery.
+per-process write serialization, commit/rollback, admission reconciliation, completion, and stale
+request recovery. PostgreSQL constraints and row locks provide cross-process coordination.
 `ConversationRepository` executes scoped SQL and mutates ORM rows inside the supplied session;
 it never commits. ORM objects may pass between repository and store only while that session is
 alive; the store returns materialized application records/outcomes to the asynchronous service.
 `conversations/completion.py` owns completion invariants and response assembly;
 `outcomes.py` owns terminal outcome serialization; `execution.py` owns cancellation draining
-and process capacity. Startup invokes the store's recovery before accepting traffic.
+and per-process capacity. Startup recovers only requests older than the 120-second protection
+window, and submission performs the same scoped stale check before admission. The threshold
+measures request age, assumes synchronized clocks across hosts, and does not detect worker liveness
+or renew ownership. A late completion reads the winning terminal outcome under its row lock.
 The provider is called only after the user/request admission commits. No session crosses that await.
 Completion atomically stores the rendered assistant message, complete new model/tool turn,
 presentation order, selection, and serialized terminal response.
@@ -102,8 +109,9 @@ the SDK itself still makes one attempt. Other HTTP/transport errors remain termi
 numeric Retry-After delays are honored and longer/unparseable delays are not retried in-turn.
 An upstream HTTP 504 remains a timeout when retries are exhausted.
 
-Conversation rows pin server-owned connection/provider/model identity. SQLite uniqueness enforces
-request identity and one active request per conversation. Application scope checks additionally
+Conversation rows pin server-owned connection/provider/model identity. PostgreSQL uniqueness
+enforces request identity and one active request per conversation across workers. Row locks
+serialize competing terminal writes. Application scope checks additionally
 ensure selected vehicles belong to the conversation's dealership. Full public history is ordered
 by a conversation-local sequence; bounded model replay uses only completed whole turns, while
 failed and interrupted user messages remain visible to clients.
@@ -156,7 +164,9 @@ the final protobuf message size. Budget failures follow normal terminal provider
 Admission owns a shielded task through cancellation, drains its worker, and interrupts only a turn
 it admitted. Internal admission IDs permit fresh-session reconciliation after uncertain commit
 acknowledgements. Completion likewise drains its worker before cancellation settlement, preserving
-committed-completion precedence. Capacity is released only after this cleanup finishes.
+committed-completion precedence. Capacity is released only after this cleanup finishes. A process
+crash leaves its request protected until the bounded turn plus cleanup margin has elapsed; another
+worker then settles it as interrupted without rerunning external work.
 
 ## Frontend and generated API boundary
 
@@ -208,7 +218,10 @@ only on loopback port 5173 and leaves dependencies in the image. `Dockerfile.ver
 combined check image used by the existing Compose `verify` service; `scripts/verify.py` and CI use
 the same check sequence. Chromium's real-backend smoke reuses the existing safety scripted model
 and acceptance runner with stable stock-number selection, isolated configuration, assignment CSV,
-and temporary SQLite. It stops the backend before restarting against that database. Development
-configuration and database storage are never used by the browser smoke.
+and temporary SQLite. Isolated PostgreSQL tests exercise cross-worker admission, actual row-lock contention between
+completion and recovery in both orders, serialized schema/bootstrap startup, and terminal settlement.
+The abrupt-process-stop test also runs against PostgreSQL and checks fresh-request protection,
+stale recovery on submission, preserved completed history, and terminal replay without provider calls. Development configuration and database storage are never used
+by either verification path.
 
 ReplyProgress owns only the current mounted browser-wait timer and cleans it up on completion. Its stage messages are elapsed-time guidance, not backend telemetry; per-second updates are outside the live region. requestFeedback shares sanitized error-code explanations between the controller notice and persisted message rendering. Existing API error codes supply the cause without a schema change.

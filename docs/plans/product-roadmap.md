@@ -11,11 +11,11 @@ Use four large implementation chunks, in order. Create a focused sub-plan in `do
 
 ## Shared decisions
 
-- Retain the [accepted stack and request lifecycle](../stack-baseline.md): FastAPI, SQLite/SQLAlchemy, Pydantic AI, HTTPX, and Docker Compose, with one backend worker per persistent database volume.
+- Retain the [accepted stack and request lifecycle](../stack-baseline.md): FastAPI, PostgreSQL/SQLAlchemy, Pydantic AI, HTTPX, and Docker Compose, with two backend workers sharing a PostgreSQL service and its persistent volume.
 - Support multiple dealerships in the initial data model. Inventory and conversations belong to a dealership; messages and selected vehicles inherit that scope. Every inventory, vehicle-detail, conversation, and history operation enforces that scope in application/database access. The model cannot choose or override it. Test with two dealerships to catch cross-dealership leakage. Local dealership selection is not production authentication or authorization.
 - Support a configurable collection of named LLM connections, without a hardcoded single connection or arbitrary fixed count. Each connection identifies its provider, model, and server-side credential reference. A dealership chooses a configured default, and a conversation records its connection selection so follow-ups remain consistent. Validate connection references before accepting conversations; do not expose secrets or allow arbitrary provider URLs/credentials in chat requests.
 - Start with one xAI/Grok connection. Reuse Pydantic AI's provider boundary and a small configuration/resolution layer; additional connections can reuse a provider, while a new provider may need integration work and verification. This does not require simultaneous calls to several models, automatic failover, runtime connection administration, or unlimited concurrent work.
-- Preserve all admitted conversation messages and the context needed for follow-ups in SQLite. Follow the baseline's retry, failure, and interruption behavior; never claim durable success before commit. Keep external calls outside database transactions and bound model/tool work.
+- Preserve all admitted conversation messages and the context needed for follow-ups in PostgreSQL. Follow the baseline's retry, failure, and interruption behavior; never claim durable success before commit. Keep external calls outside database transactions and bound model/tool work.
 - The original inventory is preserved at `docs/context/inventory/data.csv`. Clearly labeled synthetic fixtures may support independent tests but cannot substitute for that assignment data in importer verification.
 
 ## 1. Working foundation and dealership inventory

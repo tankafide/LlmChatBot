@@ -1,14 +1,38 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
+from sqlalchemy.engine import make_url
 
 from autoassist.app import create_app
 from autoassist.config import Settings
+from autoassist.db.database import create_database_engine, database_startup_lock, initialize_schema
+from autoassist.db.models import Base
+
+
+@pytest.fixture
+def postgres_engine() -> Iterator[Engine]:
+    value = os.environ.get("AUTOASSIST_TEST_POSTGRES_URL")
+    if value is None:
+        pytest.skip("isolated PostgreSQL verification URL is not configured")
+    if make_url(value).database != "autoassist_verify":
+        raise RuntimeError("PostgreSQL tests require the autoassist_verify database")
+    engine = create_database_engine(value)
+    try:
+        with database_startup_lock(engine):
+            Base.metadata.drop_all(engine)
+            initialize_schema(engine)
+        yield engine
+    finally:
+        with database_startup_lock(engine):
+            Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 def write_config(path: Path, *, first_name: str = "Mia Motors") -> Path:

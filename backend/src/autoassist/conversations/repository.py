@@ -317,7 +317,9 @@ class ConversationRepository:
         request.terminal_body = encoded_body
 
     def require_request(self, session: Session, internal_request_id: str) -> ChatRequest:
-        request = session.get(ChatRequest, internal_request_id)
+        request = session.scalar(
+            select(ChatRequest).where(ChatRequest.id == internal_request_id).with_for_update()
+        )
         if request is None:
             raise RuntimeError("admitted request disappeared")
         return request
@@ -366,10 +368,28 @@ class ConversationRepository:
         request.terminal_http_status = http_status
         request.terminal_body = encoded_body
 
-    def recover_interrupted(self, session: Session, now: str, encoded_body: str) -> int:
-        requests = list(
-            session.scalars(select(ChatRequest).where(ChatRequest.status == "in_progress"))
+    def recover_interrupted(
+        self,
+        session: Session,
+        now: str,
+        stale_before: str,
+        encoded_body: str,
+        conversation_id: str | None = None,
+    ) -> int:
+        statement = (
+            update(ChatRequest)
+            .where(
+                ChatRequest.status == "in_progress",
+                ChatRequest.updated_at <= stale_before,
+            )
+            .values(
+                status="interrupted",
+                updated_at=now,
+                terminal_http_status=409,
+                terminal_body=encoded_body,
+            )
         )
-        for request in requests:
-            self.set_terminal(request, "interrupted", now, 409, encoded_body)
-        return len(requests)
+        if conversation_id is not None:
+            statement = statement.where(ChatRequest.conversation_id == conversation_id)
+        result = session.execute(statement)
+        return result.rowcount

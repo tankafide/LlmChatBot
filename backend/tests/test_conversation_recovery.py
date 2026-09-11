@@ -10,13 +10,18 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from conftest import write_config
 from fastapi.testclient import TestClient
 from httpx import Client, RequestError
+from sqlalchemy import update
 
 from autoassist.app import create_app
 from autoassist.chat.contracts import ChatRunRequest, ChatRunResult
 from autoassist.config import Settings
+from autoassist.conversations.repository import ConversationRepository
+from autoassist.conversations.store import ConversationStore
+from autoassist.db.database import create_database_engine, make_session_factory
 from autoassist.db.models import ChatRequest, Conversation, Message
 from autoassist.inventory.service import InventoryService
 
@@ -96,10 +101,17 @@ def test_startup_recovers_active_request_and_replays_interruption(
         assert runner.calls == 0
 
 
+@pytest.fixture(params=["sqlite", "postgresql"])
+def crash_database_url(request: pytest.FixtureRequest, tmp_path: Path) -> str:
+    if request.param == "postgresql":
+        engine = request.getfixturevalue("postgres_engine")
+        return engine.url.render_as_string(hide_password=False)
+    return f"sqlite:///{(tmp_path / 'abrupt.db').as_posix()}"
+
+
 def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: Any, crash_database_url: str
 ) -> None:
-    database_path = tmp_path / "abrupt.db"
     config_path = write_config(tmp_path / "config.json")
     marker_path = tmp_path / "admitted.marker"
     with socket.socket() as listener:
@@ -109,7 +121,7 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
     environment = os.environ.copy()
     environment.update(
         {
-            "AUTOASSIST_DATABASE_URL": f"sqlite:///{database_path.as_posix()}",
+            "AUTOASSIST_DATABASE_URL": crash_database_url,
             "AUTOASSIST_CONFIG_FILE": str(config_path),
             "AUTOASSIST_CRASH_MARKER": str(marker_path),
             "TEST_XAI_API_KEY": "test-only-key",
@@ -157,6 +169,21 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
             f"/dealerships/{dealership_id}/conversations", json={}
         ).json()["id"]
         request_id = str(uuid4())
+        prior_id = str(uuid4())
+        engine = create_database_engine(crash_database_url)
+        try:
+            store = ConversationStore(make_session_factory(engine), ConversationRepository())
+            prior, _ = store.admit(dealership_id, conversation_id, prior_id, "Earlier turn")
+            store.complete(
+                dealership_id, prior.id, ChatRunResult(reply="Earlier reply", replay_json="{}")
+            )
+        finally:
+            engine.dispose()
+        prior_response = client.post(
+            f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
+            json={"request_id": prior_id, "text": "Earlier turn"},
+        )
+        assert prior_response.status_code == 200
 
         def submit_blocked_request() -> None:
             try:
@@ -188,21 +215,48 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
             request_thread.join(timeout=10)
 
     monkeypatch.setenv("TEST_XAI_API_KEY", "test-only-key")
-    settings = Settings(
-        database_url=f"sqlite:///{database_path.as_posix()}", config_file=config_path
-    )
+    settings = Settings(database_url=crash_database_url, config_file=config_path)
     runner = NoCallRunner()
 
     def factory(_model: str, _key: str, _inventory: InventoryService) -> NoCallRunner:
         return runner
 
-    with TestClient(create_app(settings, runner_factory=factory)) as restarted:
+    restarted_app = create_app(settings, runner_factory=factory)
+    with TestClient(restarted_app) as restarted:
         url = f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages"
+        if crash_database_url.startswith("postgresql"):
+            protected = restarted.post(
+                url, json={"request_id": request_id, "text": "Wait for the crash"}
+            )
+            assert protected.status_code == 409
+            assert protected.json()["error"]["code"] == "request_in_progress"
+            # Advance only the persisted request age; do not wait two minutes or
+            # shorten the production recovery threshold in the application.
+            with restarted_app.state.session_factory.begin() as session:
+                session.execute(
+                    update(ChatRequest)
+                    .where(ChatRequest.client_request_id == request_id)
+                    .values(updated_at="2000-01-01T00:00:00+00:00")
+                )
         replay = restarted.post(url, json={"request_id": request_id, "text": "Wait for the crash"})
         assert replay.status_code == 409
         assert replay.json()["error"]["code"] == "request_interrupted"
         history = restarted.get(url).json()
         assert [(item["role"], item["request_status"]) for item in history["items"]] == [
-            ("user", "interrupted")
+            ("user", "completed"),
+            ("assistant", "completed"),
+            ("user", "interrupted"),
         ]
+        assert runner.calls == 0
+        assert (
+            restarted.post(url, json={"request_id": prior_id, "text": "Earlier turn"}).json()
+            == prior_response.json()
+        )
+
+    with TestClient(create_app(settings, runner_factory=factory)) as restarted:
+        repeated = restarted.post(
+            url, json={"request_id": request_id, "text": "Wait for the crash"}
+        )
+        assert repeated.status_code == replay.status_code
+        assert repeated.json() == replay.json()
         assert runner.calls == 0
