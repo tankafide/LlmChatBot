@@ -1,0 +1,11 @@
+# Frontend architecture research
+
+Checked 2026-09-10. These official sources inform the decision rules; repository baseline choices remain project decisions, not universal library requirements. Check installed versions before applying API examples.
+
+- [React: Reusing Logic with Custom Hooks](https://react.dev/learn/reusing-logic-with-custom-hooks): hooks encapsulate reusable stateful logic, but each call has independent state. This prevents extracting two submission hooks while mistakenly assuming one shared pending request. Prefer cohesive behavior over generic lifecycle wrappers.
+- [React: Choosing the State Structure](https://react.dev/learn/choosing-the-state-structure): avoid redundant or contradictory state. The skill requires explicit owners and derived rendering values so backend/runtime/component copies do not drift.
+- [React: You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect): transformations belong in rendering and user actions in handlers; Effects synchronize external systems. This addresses duplicate submissions from state-watching Effects and stale derived-state copies.
+- [assistant-ui: Custom Runtime](https://www.assistant-ui.com/docs/runtimes/custom/overview): LocalRuntime accepts a custom model adapter and owns runtime state; ExternalStoreRuntime receives application-owned messages and callbacks. Its built-in UI capabilities exceed this project's implemented backend contract, so available editing/regeneration features must not silently expand scope. LocalRuntime-first and non-streaming HTTP are accepted project choices.
+- [openapi-typescript introduction](https://openapi-ts.dev/introduction): generated OpenAPI types support static request/response typing without runtime code. This supports a generated contract at the fetch boundary; it does not prove response validity or justify parallel handwritten wire interfaces.
+
+Agents need the existing representative path, caller semantics, ownership and lifecycle facts, a named integration boundary, and observable acceptance evidence. Framework manuals alone cannot supply these project-specific facts. Consequently the skill instructs inspection and a short implementation architecture record rather than prescribing a speculative directory tree or utility catalog.

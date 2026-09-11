@@ -18,11 +18,16 @@ node_modules/
 dist/
 build/
 coverage/
+test-results/
+playwright-report/
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/
 bin/
 obj/
 

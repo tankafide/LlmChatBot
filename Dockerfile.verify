@@ -1,0 +1,27 @@
+FROM node:22.13.1-bookworm-slim AS node
+FROM ghcr.io/astral-sh/uv:0.8.13 AS uv
+FROM python:3.13.7-bookworm
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+COPY --from=uv /uv /uvx /bin/
+WORKDIR /workspace
+COPY backend/pyproject.toml backend/uv.lock ./backend/
+RUN uv sync --project backend --frozen --no-install-project
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+RUN cd frontend && npm ci && npx playwright install --with-deps chromium
+COPY backend ./backend
+COPY frontend ./frontend
+COPY scripts ./scripts
+COPY config ./config
+COPY README.md ./README.md
+RUN uv sync --project backend --frozen \
+    && useradd --uid 10001 --create-home verifier \
+    && mkdir -p /workspace/docs/context/inventory \
+    && cp -r /root/.cache/ms-playwright /opt/playwright \
+    && chmod -R a+rX /opt/playwright \
+    && chown -R verifier:verifier /workspace
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+USER verifier
+CMD ["python", "scripts/verify.py", "--inside"]

@@ -1,0 +1,11 @@
+# Review skill research
+
+Researched 2026-09-10 (America/Chicago). These sources inform the workflow; project-specific choices come from AGENTS.md and docs/plans/project-skills.md, not an upstream requirement.
+
+- [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills): concise trigger descriptions, progressive loading, repository discovery and explicit invocation policy support a thin review entry point with a selective specialist index. This addresses agents loading every domain or treating routing as automatic delegation. Static validation cannot establish actual implicit selection.
+- [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html): examine surrounding design, concurrency, complexity and meaningful tests. This informs tracing callers outside diff context and checking whether assertions catch behavior. The prototype's agent-operated browser review is a project decision; it does not adopt the upstream suggestion to request a developer demo.
+- [Google Engineering Practices: The Standard of Code Review](https://google.github.io/eng-practices/review/reviewer/standard.html): facts and engineering consequences take precedence over preferences; useful progress does not require perfection. This informs actionable defects versus optional suggestions and avoids speculative abstractions.
+
+Project decisions add SQLite durability, safety-data distinctions, bounded model work, review-only scope, explicit-only tech-stack and all eleven specialist routes. The skill deliberately does not reproduce their detailed contracts. The user approved shared-baseline extraction during authoring; docs/stack-baseline.md now supplies ordinary runtime facts while tech-stack remains an explicit-only decision workflow.
+
+Behavioral checks for future independent evaluation: a review-only request must leave application sources untouched; a local CSS change must not load database guidance; a synchronous database call reached from async handling requires tracing the complete execution boundary; a query per serialized row requires a concrete query-growth finding; terminal replay review must seek durable-state evidence rather than assume in-memory caching suffices. These are evaluation scenarios, not claims of live tests already passed.

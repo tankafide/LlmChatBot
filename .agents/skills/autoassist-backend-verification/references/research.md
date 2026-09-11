@@ -1,0 +1,12 @@
+# Backend verification research
+
+Checked 2026-09-10 (America/Chicago). These sources support test mechanics; the shared project baseline owns status codes, persistence guarantees, stack choices, and the single-worker lifecycle. No application checks existed when this skill was authored.
+
+- [pytest temporary paths](https://docs.pytest.org/en/stable/how-to/tmp_path.html): per-test temporary directories support isolated SQLite files. Use dedicated disposable storage; pytest's explicit base-temp option clears its target, so never aim it at project data.
+- [pytest flaky tests](https://docs.pytest.org/en/stable/explanation/flaky.html): uncontrolled state and concurrency undermine repeatability. The project applies synchronization gates, fixture cleanup, and bounded waits instead of arbitrary sleeps for races and cancellation.
+- [FastAPI async tests](https://fastapi.tiangolo.com/advanced/async-tests/): HTTPX ASGITransport supports async application tests, but AsyncClient does not invoke lifespan. An explicit lifespan harness is necessary to test startup recovery and resource ownership.
+- [SQLAlchemy SQLite dialect](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html): SQLite driver transaction behavior and foreign-key enforcement need deliberate configuration. Test with the actual engine setup and file-backed connections; mocked sessions and rollback wrappers can hide commit/locking defects.
+- [SQLAlchemy execution events](https://docs.sqlalchemy.org/en/20/core/events.html#sqlalchemy.events.ConnectionEvents.before_cursor_execute): engine/connection listeners expose executed SQL for query counts. The project applies scoped counting through serialization and growth comparisons to expose N+1 behavior, excluding fixture setup.
+- [Pydantic AI testing](https://pydantic.dev/docs/ai/guides/testing/): model overrides and test/function models support deterministic integration tests, and disabling model requests protects against accidental live calls. Use the installed version's supported APIs; fake success alone does not validate provider failures or retry budgets.
+
+Agent-specific decisions: keep service decisions testable without networks, reserve real SQLite for persistence evidence, distinguish application recreation from abrupt process recovery, and report actual versus planned evidence. Shared container verification, Ruff/mypy, retry limits, safety distinctions, and crash recovery acceptance are project requirements rather than claims that upstream documentation mandates this exact suite.

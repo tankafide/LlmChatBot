@@ -1,0 +1,11 @@
+# API contract research
+
+Researched 2026-09-10 (America/Chicago). These sources support mechanisms; the shared baseline owns stack selection, committed generated types, Docker workflow, and request lifecycle decisions.
+
+- [FastAPI: Extending OpenAPI](https://fastapi.tiangolo.com/how-to/extending-openapi/): `app.openapi()` generates from registered routes and caches the result. This supports export without a running HTTP server. Keeping dependency construction free of import-time network/storage work is the project design needed to make that export independent of live services; the documentation does not guarantee an arbitrary app is side-effect-free.
+- [FastAPI: Additional Responses](https://fastapi.tiangolo.com/advanced/additional-responses/): additional response models describe OpenAPI, while direct responses must supply the actual status and content. Agents must verify exception-handler and replay response bodies instead of assuming documentation validates them.
+- [openapi-typescript introduction](https://openapi-ts.dev/introduction): supports local OpenAPI 3.0/3.1 input and emits runtime-free types. Generate from fresh local application schemas and consume generated types in the adapter; runtime JSON checking remains separate.
+- [openapi-typescript CLI](https://openapi-ts.dev/cli): local schema-to-file generation and schema validation support a reproducible check. Use the repository's locked tool version and implemented command rather than a floating installation or assumed command. Committing output and making drift fail the shared check are project requirements.
+- [openapi-typescript advanced guidance](https://openapi-ts.dev/advanced): expressive schemas improve generated types, while wire-format changes introduce extra mapping work. Requiredness, nullability, enums, and serialization must agree across the HTTP response and adapter rather than be patched with casts.
+
+Primary failure modes addressed: schema export starting live integrations; undocumented error envelopes; types regenerated from stale snapshots; hand-maintained client duplicates; exposing integration-specific messages; and mistaking compile-time compatibility for runtime validation. No provider selection, app implementation, or completed application checks is implied by this research.

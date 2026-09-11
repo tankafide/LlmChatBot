@@ -1,0 +1,57 @@
+{
+  "conversation_id": "07dcbeca-f911-4c74-93fb-ef920879130c",
+  "selected_vehicle_id": null,
+  "items": [
+    {
+      "id": "a650753c-78b4-4050-a2a2-b9713468a738",
+      "sequence": 1,
+      "request_id": "a0e4ba4a-d051-4b20-906d-95252c6bbdb5",
+      "role": "user",
+      "text": "Show me 2022 Toyota RAV4 SUVs\nunder $27,000.",
+      "created_at": "2026-09-11T11:41:10.936296Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "0b8c5d06-c350-4afe-acf1-e0cb92620d07",
+      "sequence": 2,
+      "request_id": "a0e4ba4a-d051-4b20-906d-95252c6bbdb5",
+      "role": "assistant",
+      "text": "1. 2022 Toyota RAV4 (stock AA-1001) — price: $26,335.00; body type: SUV; trim: LE; condition: Used; mileage: 15,819 miles; exterior color: Silver Sky Metallic; drivetrain: FWD; transmission: Automatic; fuel: Gasoline",
+      "created_at": "2026-09-11T11:41:12.770887Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "3531a230-c7c0-4165-8e56-91ebe5e951f5",
+      "sequence": 3,
+      "request_id": "f9cccffd-adfb-412f-87e4-f11c78886949",
+      "role": "user",
+      "text": "Select stock AA-1001.",
+      "created_at": "2026-09-11T11:41:48.847828Z",
+      "request_status": "failed",
+      "error_code": "provider_error"
+    },
+    {
+      "id": "d8e54ecb-4098-4f99-8fec-df545302b90a",
+      "sequence": 4,
+      "request_id": "8a17b20d-9aad-403c-bb2f-8e80a630375d",
+      "role": "user",
+      "text": "Show me a Ferrari SUV under $5,000.",
+      "created_at": "2026-09-11T11:42:12.133123Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "d2d639c0-1a92-468d-b266-e25a73961d1e",
+      "sequence": 5,
+      "request_id": "8a17b20d-9aad-403c-bb2f-8e80a630375d",
+      "role": "assistant",
+      "text": "I couldn't find a matching vehicle in this dealership's inventory.",
+      "created_at": "2026-09-11T11:42:58.265599Z",
+      "request_status": "completed",
+      "error_code": null
+    }
+  ],
+  "next_after_sequence": null
+}

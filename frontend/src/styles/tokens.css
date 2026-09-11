@@ -1,0 +1,52 @@
+/* Canonical application tokens; the style skill and specimen reference this file. */
+:root {
+  color-scheme: light;
+  --aa-canvas: #f3f6f7;
+  --aa-surface: #ffffff;
+  --aa-surface-subtle: #eaf0f2;
+  --aa-text: #182a34;
+  --aa-text-muted: #52636e;
+  --aa-border: #cad5da; /* Decorative separators only. */
+  --aa-control-border: #71838d;
+  --aa-action: #006b62;
+  --aa-action-hover: #00594f;
+  --aa-action-pressed: #00483f;
+  --aa-on-action: #ffffff;
+  --aa-focus: #006b62;
+  --aa-focus-gap: #ffffff;
+  --aa-user-surface: #e4f2ee;
+  --aa-chrome: #112832;
+  --aa-chrome-text: #f7fafb;
+  --aa-chrome-muted: #b8c9cf;
+  --aa-chrome-accent: #9ad6c4;
+  --aa-success-text: #166849;
+  --aa-success-surface: #e6f4ec;
+  --aa-warning-text: #804509;
+  --aa-warning-surface: #fff4de;
+  --aa-error-text: #a52b36;
+  --aa-error-surface: #fff0f1;
+  --aa-font:
+    "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --aa-text-small: 0.875rem;
+  --aa-text-body: 1rem;
+  --aa-text-heading: 1.25rem;
+  --aa-text-title: 2rem;
+  --aa-text-title-small: 1.75rem;
+  --aa-leading: 1.6;
+  --aa-leading-heading: 1.2;
+  --aa-space-1: 0.25rem;
+  --aa-space-2: 0.5rem;
+  --aa-space-3: 0.75rem;
+  --aa-space-4: 1rem;
+  --aa-space-5: 1.5rem;
+  --aa-space-6: 2rem;
+  --aa-space-7: 3rem;
+  --aa-radius-control: 0.5rem;
+  --aa-radius-message: 0.75rem;
+  --aa-radius-composer: 1rem;
+  --aa-control-size: 2.75rem;
+  --aa-content-width: 48rem;
+  --aa-shell-width: 76rem;
+  --aa-shadow: 0 8px 24px rgb(17 40 50 / 7%);
+  --aa-motion: 140ms;
+}

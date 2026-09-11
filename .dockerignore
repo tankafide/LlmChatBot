@@ -1,0 +1,24 @@
+.git
+.env
+.env.*
+!.env.example
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+node_modules
+**/node_modules
+**/dist
+**/test-results
+**/playwright-report
+data
+prompt history
+*.db
+*.db-*
+*.sqlite*
+*.pem
+*.key
+docs
+.agents

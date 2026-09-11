@@ -1,0 +1,77 @@
+{
+  "conversation_id": "cfb75f79-23b3-4baf-b29b-e3e504ef1266",
+  "selected_vehicle_id": "8b43d7c5-9c8f-41da-8af4-7b6979e70765",
+  "items": [
+    {
+      "id": "67c77dbf-e7eb-4cee-8e00-62609da08ce0",
+      "sequence": 1,
+      "request_id": "d2de4c53-9691-4108-ae6a-bd0b3af0e346",
+      "role": "user",
+      "text": "Show me Toyota SUVs under $35,000.",
+      "created_at": "2026-09-11T11:59:17.82415Z",
+      "request_status": "failed",
+      "error_code": "provider_error"
+    },
+    {
+      "id": "d30e320f-c48f-4212-bc5a-75d762eabbd4",
+      "sequence": 2,
+      "request_id": "678d96ef-453c-4d36-bfc8-f7d283eef91a",
+      "role": "user",
+      "text": "Show me Toyota SUVs under $35,000.",
+      "created_at": "2026-09-11T12:02:35.82594Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "def81a20-53dd-4fa9-a769-64aad94b1b14",
+      "sequence": 3,
+      "request_id": "678d96ef-453c-4d36-bfc8-f7d283eef91a",
+      "role": "assistant",
+      "text": "1. 2021 Toyota Highlander (stock AA-1049) — price: $26,698.00; body type: SUV; trim: Limited; condition: Used; mileage: 91,249 miles; exterior color: Magnetic Gray Metallic; drivetrain: AWD; transmission: Automatic; fuel: Gasoline\n2. 2019 Toyota Highlander (stock AA-1004) — price: $32,797.00; body type: SUV; trim: XLE; condition: Used; mileage: 55,439 miles; exterior color: Celestial Silver Metallic; drivetrain: AWD; transmission: Automatic; fuel: Gasoline\n3. 2022 Toyota RAV4 (stock AA-1001) — price: $26,335.00; body type: SUV; trim: LE; condition: Used; mileage: 15,819 miles; exterior color: Silver Sky Metallic; drivetrain: FWD; transmission: Automatic; fuel: Gasoline\n4. 2024 Toyota RAV4 (stock AA-1002) — price: $29,998.00; body type: SUV; trim: Adventure; condition: Used; mileage: 34,820 miles; exterior color: Ice Cap; drivetrain: AWD; transmission: Automatic; fuel: Gasoline\n5. 2018 Toyota C-HR (stock AA-1035) — price: $17,995.00; body type: SUV; trim: XLE; condition: Used; mileage: 51,053 miles; exterior color: Black Sand Pearl; drivetrain: FWD; transmission: CVT; fuel: Gasoline\n6. 2022 Toyota RAV4 (stock AA-1041) — price: $27,563.00; body type: SUV; trim: XLE; condition: Used; mileage: 31,789 miles; exterior color: White; drivetrain: AWD; transmission: Automatic; fuel: Gasoline",
+      "created_at": "2026-09-11T12:02:44.846677Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "334ce150-03ea-40f2-b351-08e0632b283a",
+      "sequence": 4,
+      "request_id": "e578d236-54a6-4428-8495-5dda6ec26597",
+      "role": "user",
+      "text": "Tell me more about the third one. What is its mileage, drivetrain, and price?",
+      "created_at": "2026-09-11T12:03:11.799072Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "c2239c5f-be9d-4632-a722-430719457824",
+      "sequence": 5,
+      "request_id": "e578d236-54a6-4428-8495-5dda6ec26597",
+      "role": "assistant",
+      "text": "2022 Toyota RAV4 (stock AA-1001) — mileage: 15,819 miles; drivetrain: FWD; price: $26,335.00",
+      "created_at": "2026-09-11T12:03:24.514493Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "f2afc5ee-d5bb-447f-be35-144e79366335",
+      "sequence": 6,
+      "request_id": "cb3ea664-b87c-4d85-83d4-4052ab08444e",
+      "role": "user",
+      "text": "What recalls and crash-test ratings does it have?",
+      "created_at": "2026-09-11T12:04:10.419869Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "46a78a1d-21f7-4979-b28b-546b530c77f5",
+      "sequence": 7,
+      "request_id": "cb3ea664-b87c-4d85-83d4-4052ab08444e",
+      "role": "assistant",
+      "text": "2022 Toyota RAV4 (stock AA-1001) — NHTSA\nRecalls: 1 campaigns; 0 with park-it/park-outside flags.\nNHTSA campaign 22V519000: AIR BAGS:SENSOR:OCCUPANT CLASSIFICATION:FRONT PASSENGER\nNHTSA summary excerpt: Toyota Motor Engineering & Manufacturing (Toyota) is recalling certain 2022 Rav4, Rav4 Hybrid, and Rav4 Prime vehicles. The front passenger seat may have been assembled with interference between internal parts that may cause the Occupant Classification System (OCS) sensor to incorrectly detect the o [excerpt]\nNHTSA consequence excerpt: Incorrect detection of an occupant may result in improper air bag deployment during a crash, increasing the risk of injury.\nNHTSA remedy excerpt: Dealers will inspect and repair the front passenger seat, as necessary, free of charge. Owner notification letters were mailed September 2, 2022. Owners may contact Toyota's customer service at 1-800-331-4331. Toyota's number for this recall is 22TA08.\nNHTSA notes excerpt: Owners may also contact the National Highway Traffic Safety Administration Vehicle Safety Hotline at 1-888-327-4236 (TTY 1-800-424-9153), or go to www [excerpt]\nYear/make/model campaigns do not establish this VIN's applicability or repair status. Check the VIN at https://www.nhtsa.gov/recalls.\nNHTSA source: https://api.nhtsa.gov/recalls/recallsByVehicle?make=Toyota&model=RAV4&modelYear=2022\nRetrieved: 2026-09-11T12:04:16.391325+00:00\nCrash ratings: available.\nVariant: 2022 Toyota RAV4 SUV FWD (NHTSA ID 16640).\nOverall: 5/5 stars.\nFrontal: 4/5 stars.\nSide: 5/5 stars.\nRollover: 4/5 stars.\nNHTSA supplemental note [NHTSALaneDepartureWarning]: Standard\nNHTSA dynamicTipResult: No Tip\nConcern-field coverage is incomplete; missing notes do not establish absence of safety concerns. Individual ratings are not a safety guarantee or vehicle ranking. https://www.nhtsa.gov/ratings\nNHTSA source: https://api.nhtsa.gov/SafetyRatings/VehicleId/16640?format=json\nRetrieved: 2026-09-11T12:04:16.461168+00:00",
+      "created_at": "2026-09-11T12:04:19.432599Z",
+      "request_status": "completed",
+      "error_code": null
+    }
+  ],
+  "next_after_sequence": null
+}

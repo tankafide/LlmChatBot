@@ -1,0 +1,97 @@
+{
+  "conversation_id": "1a5164c4-3da4-445a-bdfd-a1f7cebb4c9a",
+  "selected_vehicle_id": null,
+  "items": [
+    {
+      "id": "0d33604d-dc4c-4e77-b773-764f37a6ef19",
+      "sequence": 1,
+      "request_id": "e42f2a26-24f1-4a1f-9efa-4cfea85c00a4",
+      "role": "user",
+      "text": "Show me Toyota SUVs under $35,000.",
+      "created_at": "2026-09-11T11:36:44.422977Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "d5545691-08a4-4465-9b86-ec5d1c27c187",
+      "sequence": 2,
+      "request_id": "e42f2a26-24f1-4a1f-9efa-4cfea85c00a4",
+      "role": "assistant",
+      "text": "1. 2021 Toyota Highlander (stock AA-1049) — price: $26,698.00; body type: SUV; trim: Limited; condition: Used; mileage: 91,249 miles; exterior color: Magnetic Gray Metallic; drivetrain: AWD; transmission: Automatic; fuel: Gasoline\n2. 2019 Toyota Highlander (stock AA-1004) — price: $32,797.00; body type: SUV; trim: XLE; condition: Used; mileage: 55,439 miles; exterior color: Celestial Silver Metallic; drivetrain: AWD; transmission: Automatic; fuel: Gasoline\n3. 2022 Toyota RAV4 (stock AA-1001) — price: $26,335.00; body type: SUV; trim: LE; condition: Used; mileage: 15,819 miles; exterior color: Silver Sky Metallic; drivetrain: FWD; transmission: Automatic; fuel: Gasoline\n4. 2024 Toyota RAV4 (stock AA-1002) — price: $29,998.00; body type: SUV; trim: Adventure; condition: Used; mileage: 34,820 miles; exterior color: Ice Cap; drivetrain: AWD; transmission: Automatic; fuel: Gasoline\n5. 2018 Toyota C-HR (stock AA-1035) — price: $17,995.00; body type: SUV; trim: XLE; condition: Used; mileage: 51,053 miles; exterior color: Black Sand Pearl; drivetrain: FWD; transmission: CVT; fuel: Gasoline\n6. 2022 Toyota RAV4 (stock AA-1041) — price: $27,563.00; body type: SUV; trim: XLE; condition: Used; mileage: 31,789 miles; exterior color: White; drivetrain: AWD; transmission: Automatic; fuel: Gasoline",
+      "created_at": "2026-09-11T11:37:13.073322Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "18c4b31c-9a0b-4b2a-bce3-43a7beebf9db",
+      "sequence": 3,
+      "request_id": "1c59b150-b851-4854-9292-5b9c477965cf",
+      "role": "user",
+      "text": "Tell me more about the third one. What is its mileage, drivetrain, and price?",
+      "created_at": "2026-09-11T11:37:18.443273Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "2d0bb385-9e8a-42c4-b056-ff96d8eaa53c",
+      "sequence": 4,
+      "request_id": "1c59b150-b851-4854-9292-5b9c477965cf",
+      "role": "assistant",
+      "text": "2022 Toyota RAV4 (stock AA-1001) — mileage: 15,819 miles; drivetrain: FWD; price: $26,335.00",
+      "created_at": "2026-09-11T11:37:19.835465Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "bb37f7e5-0dc9-4d9c-8b3f-75595a6ed42b",
+      "sequence": 5,
+      "request_id": "72ea4924-edbe-4d0b-9ceb-2cff7cbabb76",
+      "role": "user",
+      "text": "What recalls and crash-test ratings does it have?",
+      "created_at": "2026-09-11T11:37:49.994749Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "f1629cd5-8abd-4c3c-8f1f-193a7ddd642a",
+      "sequence": 6,
+      "request_id": "72ea4924-edbe-4d0b-9ceb-2cff7cbabb76",
+      "role": "assistant",
+      "text": "Please specify a stock number or a number from the latest vehicle list.",
+      "created_at": "2026-09-11T11:38:12.265682Z",
+      "request_status": "completed",
+      "error_code": null
+    },
+    {
+      "id": "8b99d58d-29ae-483d-847b-e8a46464c343",
+      "sequence": 7,
+      "request_id": "65a81c82-fbe1-4051-bce1-3f1c1129c195",
+      "role": "user",
+      "text": "What recalls and crash-test ratings does stock AA-1001 have?",
+      "created_at": "2026-09-11T11:38:18.942502Z",
+      "request_status": "failed",
+      "error_code": "provider_error"
+    },
+    {
+      "id": "0462d114-9926-4938-856b-99e48e45f1c4",
+      "sequence": 8,
+      "request_id": "dc5ff105-297b-439c-8ad7-eafa3b3bc1e7",
+      "role": "user",
+      "text": "What recalls and crash-test ratings does stock AA-1001 have?",
+      "created_at": "2026-09-11T11:39:15.591461Z",
+      "request_status": "failed",
+      "error_code": "provider_error"
+    },
+    {
+      "id": "a0488980-e15d-4429-8683-2cdbf5906902",
+      "sequence": 9,
+      "request_id": "b782ac16-8f39-499a-ba19-96d216235ad3",
+      "role": "user",
+      "text": "Show me 2022 Toyota RAV4 SUVs under $27,000.",
+      "created_at": "2026-09-11T11:40:25.927511Z",
+      "request_status": "failed",
+      "error_code": "provider_error"
+    }
+  ],
+  "next_after_sequence": null
+}

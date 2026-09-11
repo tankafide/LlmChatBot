@@ -1,0 +1,36 @@
+{
+  "connections": {
+    "primary-openai": {
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "primary-gemini": {
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite",
+      "api_key_env": "GEMINI_API_KEY"
+    },
+    "primary-grok": {
+      "provider": "xai",
+      "model": "grok-4",
+      "api_key_env": "XAI_API_KEY"
+    },
+    "secondary-grok": {
+      "provider": "xai",
+      "model": "grok-4",
+      "api_key_env": "SECONDARY_XAI_API_KEY"
+    }
+  },
+  "dealerships": [
+    {
+      "slug": "mia-motors",
+      "name": "Mia Motors",
+      "default_connection": "primary-openai"
+    },
+    {
+      "slug": "lakeview-auto",
+      "name": "Lakeview Auto",
+      "default_connection": "primary-openai"
+    }
+  ]
+}

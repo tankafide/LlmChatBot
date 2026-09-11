@@ -1,0 +1,128 @@
+stock_number,year,make,model,trim,body_type,condition,price,mileage,exterior_color,drivetrain,transmission,fuel
+AA-1001,2022,Toyota,RAV4,LE,SUV,Used,26335,15819,Silver Sky Metallic,FWD,Automatic,Gasoline
+AA-1002,2024,Toyota,RAV4,Adventure,SUV,Used,29998,34820,Ice Cap,AWD,Automatic,Gasoline
+AA-1003,2025,Toyota,RAV4 Hybrid,XLE,SUV,New,39173,0,Blueprint,AWD,CVT,Hybrid
+AA-1004,2019,Toyota,Highlander,XLE,SUV,Used,32797,55439,Celestial Silver Metallic,AWD,Automatic,Gasoline
+AA-1005,2024,Toyota,4Runner,SR5,SUV,Used,44080,19363,Classic Silver Metallic,4WD,Automatic,Gasoline
+AA-1006,2018,Toyota,Camry,LE,Sedan,Used,14800,118648,Blue Crush Metallic,FWD,Automatic,Gasoline
+AA-1007,2023,Toyota,Corolla,LE,Sedan,Used,18905,52641,Black,FWD,CVT,Gasoline
+AA-1008,2025,Toyota,Corolla Hybrid,LE,Sedan,Used,26374,28,Black,FWD,CVT,Hybrid
+AA-1009,2026,Toyota,Camry,LE,Sedan,New,28732,10,Midnight Black Metallic,FWD,CVT,Hybrid
+AA-1010,2026,Toyota,Tundra,Platinum,Truck,New,74833,5,Lunar Rock,4WD,Automatic,Gasoline
+AA-1011,2023,Ford,Escape,Active,SUV,Used,17491,33600,Agate Black Metallic,FWD,Automatic,Gasoline
+AA-1012,2019,Ford,Escape,SE,SUV,Used,14238,59233,Ingot Silver Metallic,FWD,Automatic,Gasoline
+AA-1013,2022,Ford,Explorer,Timberline,SUV,Used,28490,65713,Star White Metallic Tri-Coat,4WD,Automatic,Gasoline
+AA-1014,2023,Ford,Bronco Sport,Heritage,SUV,Used,26455,24707,Cactus Gray,4WD,Automatic,Gasoline
+AA-1015,2024,Ford,Edge,SEL,SUV,Used,24791,21124,Black Metallic,AWD,Automatic,Gasoline
+AA-1016,2025,Ford,F-150,STX,Truck,New,38702,27,Agate Black Metallic,RWD,Automatic,Gasoline
+AA-1017,2019,Ford,F-150,Raptor,Truck,Used,43523,70165,Ingot Silver Metallic,4WD,Automatic,Gasoline
+AA-1018,2025,Ford,F-150,Lariat,Truck,New,71420,0,Agate Black Metallic,4WD,Automatic,Gasoline
+AA-1019,2021,Jeep,Grand Cherokee L,Limited,SUV,Used,21788,100526,Velvet Red Pearlcoat,4WD,Automatic,Gasoline
+AA-1020,2023,Jeep,Wrangler,Willys,SUV,Used,27480,38716,Sting-Gray Clearcoat,4WD,Automatic,Gasoline
+AA-1021,2026,Honda,HR-V,LX,SUV,New,29605,0,Nordic Forest Pearl,AWD,CVT,Gasoline
+AA-1022,2026,Honda,CR-V,EX-L,SUV,New,36781,10,Meteorite Gray Metallic,AWD,CVT,Gasoline
+AA-1023,2022,Hyundai,Tucson,N Line,SUV,Used,22988,25033,Quartz White,AWD,Automatic,Gasoline
+AA-1024,2026,Hyundai,Venue,SEL,SUV,New,25215,3,Mirage Green,FWD,CVT,Gasoline
+AA-1025,2023,Kia,Niro,SX Touring,SUV,Used,23832,50650,Graphite Gray,FWD,Automatic,Hybrid
+AA-1026,2025,Kia,Soul,LX,Hatchback,New,23030,8,Snow White Pearl,FWD,CVT,Gasoline
+AA-1027,2021,Nissan,Sentra,SV,Sedan,Used,14972,55239,Brilliant Silver Metallic,FWD,CVT,Gasoline
+AA-1028,2021,Audi,Q5,Premium Plus,SUV,Used,24899,52760,Black,AWD,Automatic,Gasoline
+AA-1029,2022,Mercedes-Benz,GLA 250,4MATIC,SUV,Used,28999,44200,White,AWD,Automatic,Gasoline
+AA-1030,2023,BMW,X5,sDrive40i,SUV,Used,41900,27151,Phytonic Blue Metallic,RWD,Automatic,Gasoline
+AA-1031,2022,Lexus,RX 350,Premium,SUV,Used,34581,97795,Eminent White Pearl,AWD,Automatic,Gasoline
+AA-1032,2026,Ram,1500,Big Horn,Truck,New,49845,231,Forged Blue Metallic,4WD,Automatic,Gasoline
+AA-1033,2023,Toyota,Highlander Hybrid,Limited,SUV,Used,38750,65008,Pearl,AWD,CVT,Hybrid
+AA-1034,2026,Toyota,Sequoia,TRD Pro,SUV,Used,81895,4031,Ice,4WD,Automatic,Gasoline
+AA-1035,2018,Toyota,C-HR,XLE,SUV,Used,17995,51053,Black Sand Pearl,FWD,CVT,Gasoline
+AA-1036,2025,Toyota,Tundra Hybrid,Platinum,Truck,Used,55450,20860,Supersonic Red,4WD,Automatic,Hybrid
+AA-1037,2021,Toyota,Tacoma,TRD Sport,Truck,Used,32995,96040,Cement,4WD,Automatic,Gasoline
+AA-1038,2024,Toyota,Land Cruiser,1958,SUV,Used,58995,65028,Ice,4WD,Automatic,Gasoline
+AA-1039,2025,Toyota,Tundra,SR5,Truck,Used,43487,8399,Ice,4WD,Automatic,Gasoline
+AA-1040,2024,Toyota,Corolla,LE,Sedan,Used,17968,54720,Blueprint,FWD,CVT,Gasoline
+AA-1041,2022,Toyota,RAV4,XLE,SUV,Used,27563,31789,White,AWD,Automatic,Gasoline
+AA-1042,2026,Toyota,Corolla,LE,Sedan,Used,22585,23128,Celestite,FWD,CVT,Gasoline
+AA-1043,2018,Toyota,Tacoma,TRD Sport,Truck,Used,21994,119310,Barcelona Red Metallic,RWD,Automatic,Gasoline
+AA-1044,2021,Toyota,Tacoma,TRD Sport,Truck,Used,35994,31113,Magnetic Gray Metallic,4WD,Automatic,Gasoline
+AA-1045,2025,Toyota,Crown,Platinum,Sedan,Used,37777,35259,Black,AWD,Automatic,Gasoline
+AA-1046,2022,Toyota,Camry,XSE,Sedan,Used,25319,43472,Blueprint,AWD,Automatic,Gasoline
+AA-1047,2020,Toyota,Camry,XSE,Sedan,Used,21937,97605,Pearl,FWD,Automatic,Gasoline
+AA-1048,2025,Toyota,Camry,LE,Sedan,Used,25991,27547,Midnight Black Metallic,FWD,CVT,Gasoline
+AA-1049,2021,Toyota,Highlander,Limited,SUV,Used,26698,91249,Magnetic Gray Metallic,AWD,Automatic,Gasoline
+AA-1050,2024,Toyota,Sequoia,Capstone,SUV,Used,60965,60524,Midnight Black Metallic,4WD,Automatic,Gasoline
+AA-1051,2026,Toyota,Corolla,LE,Sedan,Used,21989,2212,Midnight Black Metallic,FWD,CVT,Gasoline
+AA-1052,2021,Ford,Expedition,Limited,SUV,Used,35995,62856,Black Metallic,4WD,Automatic,Gasoline
+AA-1053,2019,Ford,F-350SD,Lariat,Truck,Used,52995,87087,Black Metallic,4WD,Automatic,Gasoline
+AA-1054,2025,Ford,F-250SD,Lariat,Truck,Used,65995,26094,Gray Metallic,4WD,Automatic,Gasoline
+AA-1055,2023,Ford,F-150,XLT,Truck,Used,36250,36545,Agate Black Metallic,4WD,Automatic,Gasoline
+AA-1056,2021,Ford,Explorer,ST,SUV,Used,30250,61582,White Metallic,4WD,Automatic,Gasoline
+AA-1057,2024,Ford,F-250SD,Lariat,Truck,Used,68750,13663,Black Metallic,4WD,Automatic,Gasoline
+AA-1058,2025,Ford,Bronco,Raptor,SUV,Used,73995,4670,Blue Metallic,4WD,Automatic,Gasoline
+AA-1059,2024,Ford,F-250SD,Lariat,Truck,Used,70350,6069,Blue Metallic,4WD,Automatic,Gasoline
+AA-1060,2014,Ford,Flex,SEL,SUV,Used,9995,103115,Mineral Gray Metallic,AWD,Automatic,Gasoline
+AA-1061,2023,Ford,F-150,Raptor,Truck,Used,59995,52602,Avalanche,4WD,Automatic,Gasoline
+AA-1062,2026,Ford,F-150,Lariat,Truck,Used,67450,183,Silver Metallic,4WD,Automatic,Gasoline
+AA-1063,2025,Ford,F-150,XLT,Truck,Used,40995,23598,Red Metallic,4WD,Automatic,Gasoline
+AA-1064,2021,Ford,Bronco,Badlands,SUV,Used,35995,73397,Shadow Black,4WD,Automatic,Gasoline
+AA-1065,2020,Ford,Explorer,XLT,SUV,Used,15995,84231,Red Metallic,RWD,Automatic,Gasoline
+AA-1066,2024,Ford,F-150,Platinum,Truck,Used,58995,25898,Gray Metallic,4WD,Automatic,Gasoline
+AA-1067,2023,Ford,F-450SD,Lariat,Truck,Used,71995,74970,Red Metallic,4WD,Automatic,Gasoline
+AA-1068,2019,Ford,Mustang,GT,Coupe,Used,30995,59690,Oxford White,RWD,Manual,Gasoline
+AA-1069,2023,Ford,F-450SD,Platinum,Truck,Used,76995,81559,White Metallic,4WD,Automatic,Gasoline
+AA-1070,2025,Ford,Escape,ST-Line Select,SUV,Used,21374,27782,Silver Metallic,AWD,Automatic,Gasoline
+AA-1071,2016,Ford,Mustang,GT Premium,Coupe,Used,23494,78382,Race Red,RWD,Manual,Gasoline
+AA-1072,2021,Honda,Accord,Touring 2.0T,Sedan,Used,24498,102208,Radiant Red Metallic,FWD,Automatic,Gasoline
+AA-1073,2018,Honda,CR-V,LX,SUV,Used,13995,135476,Sandstorm Metallic,FWD,CVT,Gasoline
+AA-1074,2025,Honda,Civic,Sport,Sedan,Used,25995,33770,Platinum White Pearl,FWD,CVT,Gasoline
+AA-1075,2024,Honda,Civic,Sport,Sedan,Used,24995,29340,Crystal Black Pearl,FWD,CVT,Gasoline
+AA-1076,2020,Honda,Odyssey,EX-L,Van,Used,24995,88026,Crystal Black Pearl,FWD,Automatic,Gasoline
+AA-1077,2021,Honda,Civic,EX,Sedan,Used,21995,73831,Aegean Blue Metallic,FWD,CVT,Gasoline
+AA-1078,2022,Honda,Civic,EX,Sedan,Used,22995,85017,Rallye Red,FWD,CVT,Gasoline
+AA-1079,2025,Honda,Pilot,TrailSport,SUV,Used,42995,21504,Sonic Gray Pearl,AWD,Automatic,Gasoline
+AA-1080,2012,Honda,CR-V,EX,SUV,Used,11995,135989,Polished Metal Metallic,FWD,Automatic,Gasoline
+AA-1081,2025,Chevrolet,Traverse,LT,SUV,Used,33750,47277,Summit White,AWD,Automatic,Gasoline
+AA-1082,2024,Chevrolet,Tahoe,LT,SUV,Used,40995,71928,Summit White,RWD,Automatic,Gasoline
+AA-1083,2023,Chevrolet,Tahoe,RST,SUV,Used,50418,94560,Summit White,RWD,Automatic,Gasoline
+AA-1084,2023,Chevrolet,Tahoe,RST,SUV,Used,44550,79186,Black,RWD,Automatic,Gasoline
+AA-1085,2022,Chevrolet,Tahoe,RST,SUV,Used,38995,103702,Midnight Blue Metallic,RWD,Automatic,Gasoline
+AA-1086,2026,Chevrolet,Trax,LT,SUV,Used,19999,5269,Summit White,FWD,Automatic,Gasoline
+AA-1087,2024,Chevrolet,Silverado 1500,RST,Truck,Used,49594,20895,Summit White,4WD,Automatic,Gasoline
+AA-1088,2023,Chevrolet,Silverado 1500,ZR2,Truck,Used,43723,96206,Sterling Gray Metallic,4WD,Automatic,Gasoline
+AA-1089,2023,Chevrolet,Silverado 1500,LT,Truck,Used,31072,53081,Ash,4WD,Automatic,Gasoline
+AA-1090,2024,Chevrolet,Silverado 2500HD,ZR2,Truck,Used,65794,51457,Slate Gray Metallic,4WD,Automatic,Gasoline
+AA-1091,2023,Jeep,Grand Cherokee,Limited,SUV,Used,25995,70822,Bright White Clearcoat,4WD,Automatic,Gasoline
+AA-1092,2023,Jeep,Grand Cherokee L,Laredo,SUV,Used,21995,98077,Diamond Black,4WD,Automatic,Gasoline
+AA-1093,2022,Jeep,Grand Cherokee L,Altitude,SUV,Used,21995,85418,Bright White Clearcoat,RWD,Automatic,Gasoline
+AA-1094,2022,Jeep,Grand Cherokee L,Summit,SUV,Used,30995,75959,Velvet,4WD,Automatic,Gasoline
+AA-1095,2024,Jeep,Grand Cherokee L,Limited,SUV,Used,25450,85625,Bright White Clearcoat,4WD,Automatic,Gasoline
+AA-1096,2022,Jeep,Wagoneer,Series I,SUV,Used,32450,79672,Diamond Black,4WD,Automatic,Gasoline
+AA-1097,2022,Jeep,Grand Cherokee L,Laredo,SUV,Used,22450,67775,Silver,RWD,Automatic,Gasoline
+AA-1098,2026,Jeep,Wrangler,Rubicon,SUV,Used,40995,19118,Mojito Clearcoat,4WD,Automatic,Gasoline
+AA-1099,2024,Jeep,Compass,Limited,SUV,Used,18531,61770,Baltic Gray Metallic Clearcoat,4WD,Automatic,Gasoline
+AA-1100,2026,Kia,Sportage,EX,SUV,New,30464,7,Ebony Black,FWD,Automatic,Gasoline
+AA-1101,2026,Kia,K4,GT-Line,Sedan,New,25769,0,Snow White Pearl,FWD,CVT,Gasoline
+AA-1102,2026,Kia,Sorento,S,SUV,New,32827,12,Wolf Gray,FWD,Automatic,Gasoline
+AA-1103,2026,Kia,K5,GT-Line,Sedan,Used,28450,1645,Gray,FWD,Automatic,Gasoline
+AA-1104,2026,Kia,Sportage,EX,SUV,New,30927,7,Gray,FWD,Automatic,Gasoline
+AA-1105,2026,Kia,Sorento,S,SUV,New,33132,12,Panthera Metal,FWD,Automatic,Gasoline
+AA-1106,2027,Kia,Telluride Hybrid,SX Prestige,SUV,New,58589,10,Black Jade Green,AWD,Automatic,Hybrid
+AA-1107,2026,Kia,K5,GT-Line,Sedan,New,28998,11,Aurora Black Pearl,FWD,Automatic,Gasoline
+AA-1108,2026,Kia,Niro,EX,SUV,New,31252,10,Steel Gray,FWD,Automatic,Gasoline
+AA-1109,2026,Kia,Sportage,SX-Prestige,SUV,Used,32995,2408,Panthera Metal Matte,FWD,Automatic,Gasoline
+AA-1110,2027,Kia,Carnival,SX,Van,New,47144,10,Isg,FWD,Automatic,Gasoline
+AA-1111,2021,BMW,4 Series,430i,Coupe,Used,26450,68655,Bluestone Metallic,RWD,Automatic,Gasoline
+AA-1112,2026,Kia,Sportage,EX,SUV,New,29385,21,Blue,FWD,Automatic,Gasoline
+AA-1113,2027,Kia,Telluride,X-Pro SX-Prestige,SUV,New,58065,8,Terrain Brown,AWD,Automatic,Gasoline
+AA-1114,2011,Nissan,Murano,SL,SUV,Used,9995,86951,Platinum Graphite,FWD,CVT,Gasoline
+AA-1115,2026,Kia,K4,LXS,Sedan,New,23026,7,Gray,FWD,CVT,Gasoline
+AA-1116,2027,Kia,Telluride,SX-Prestige,SUV,New,56394,12,Black Jade Green,AWD,Automatic,Gasoline
+AA-1117,2024,Mercedes-Benz,CLA,CLA 250,Sedan,Used,32995,12990,Black,AWD,Automatic,Gasoline
+AA-1118,2026,Kia,Carnival,EX,Van,New,40143,12,Blue,FWD,Automatic,Gasoline
+AA-1119,2026,Kia,Sportage Hybrid,EX,SUV,New,33539,12,Black,AWD,Automatic,Hybrid
+AA-1120,2026,Kia,Seltos,S,SUV,New,25153,12,Steel Gray,FWD,CVT,Gasoline
+AA-1121,2024,Kia,Sportage,SX-Prestige,SUV,Used,29895,36709,Ebony Black,FWD,Automatic,Gasoline
+AA-1122,2026,Kia,EV9,GT-Line,SUV,New,63812,21,Glacial White/Ebony Black,AWD,Automatic,Electric
+AA-1123,2026,Kia,Sportage,LX,SUV,New,27422,7,Ebony Black,FWD,Automatic,Gasoline
+AA-1124,2026,Kia,K4,LXS,Sedan,New,23404,12,Currant Red,FWD,CVT,Gasoline
+AA-1125,2027,Kia,Telluride,S,SUV,New,44649,10,Glacial White Pearl,FWD,Automatic,Gasoline
+AA-1126,2027,Kia,Telluride Hybrid,EX,SUV,New,47563,12,Glacial White Pearl,FWD,Automatic,Hybrid
+AA-1127,2026,Kia,Carnival,EX,Van,New,40167,12,Aurora Black,FWD,Automatic,Gasoline

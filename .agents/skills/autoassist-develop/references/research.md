@@ -1,0 +1,12 @@
+# Development orchestrator research
+
+Checked 2026-09-10. This reference explains authoring choices; it is optional background rather than required runtime context.
+
+- [OpenAI: Build skills](https://learn.chatgpt.com/docs/build-skills) describes precise trigger metadata, instruction-only skills, progressive disclosure, repository `.agents/skills` discovery, and invocation policy. Applied by keeping a thin development entry point, linking only applicable specialist bodies, and enabling implicit invocation for this orchestrator. Discovery support is documented; actual local matching still requires a live environment check.
+- [OpenAI: Prompting](https://learn.chatgpt.com/docs/prompting) recommends stating useful goals, context, outputs, and boundaries without prescribing unnecessary detail. Applied by defining observable completion and scope, leaving routine implementation choices to repository evidence, and avoiding mandatory ceremony for a small fix.
+
+Project decisions come from `AGENTS.md`, `docs/plans/project-skills.md`, and the user-approved `docs/stack-baseline.md`, not those upstream pages: eleven specialist roles, early verification routing, agent-owned review, the assignment timebox, assignment-inventory handling, and the explicit-only tech-stack workflow. The shared baseline is available to all skills; its request-lifecycle table is linked rather than duplicated. The inventory later became available at `docs/context/inventory/data.csv`.
+
+Agent failure modes translated into behavior: broad context loading becomes trigger-based reading; planning substituted for implementation becomes explicit completion checks; unsupported success claims become observed test outcomes; avoidable user handoffs become local command/tool discovery; accidental architecture expansion becomes inspection of existing callers and affected boundaries. Domain-specific execution and durability rules stay with their specialist owners.
+
+Representative integration checks: a CSS fix routes to frontend/verification only; a persistence boundary refactor adds backend architecture/persistence/verification; a public schema change adds API contract and frontend drift verification when present; a genuinely unavailable external input leaves only its dependent work pending. Confirm with isolated task execution when the full skill set is available, rather than treating frontmatter validation as behavioral proof.

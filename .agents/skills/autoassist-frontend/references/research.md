@@ -1,0 +1,12 @@
+# Frontend research
+
+Reviewed 2026-09-10 (America/Chicago). Primary documentation informs implementation rules; the shared project baseline owns stack choices and request semantics. Recheck installed versions when implementing, rather than pinning future code to current tutorial snippets.
+
+- [assistant-ui LocalRuntime](https://www.assistant-ui.com/docs/runtimes/custom/local-runtime): a custom model adapter connects a backend, while the runtime supplies several conversation features. Agent implication: inspect those defaults and expose only backend-supported actions; do not copy tutorial transcript persistence or client tool execution into this backend-authoritative project.
+- [assistant-ui ExternalStoreRuntime](https://www.assistant-ui.com/docs/runtimes/custom/external-store): an adapter bridges application-owned messages and callbacks; callback presence enables features. Use this alternative for an actual state-ownership need and omit unsupported callbacks. It does not require adding a global state library.
+- [React: You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect): derive render data and handle user actions in event handlers; asynchronous fetching needs cleanup against races. Apply this to preventing duplicate submissions and stale history overwriting another conversation.
+- [MDN: Using Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch): HTTP error statuses do not reject fetch promises; abort signals affect the client request. Check status and parsing failures, and preserve ambiguous server outcomes under the project's same-ID retry protocol.
+- [MDN: ARIA log role](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles/log_role): logs represent sequential additions and have polite live behavior; they require an accessible name. Inspect existing assistant-ui markup before adding live regions, then verify announcements and focus without duplicate regions.
+- [openapi-typescript introduction](https://openapi-ts.dev/introduction): schema generation provides runtime-free TypeScript types. Consume generated contracts while handling unexpected runtime responses; generation is not payload validation.
+
+Project-specific decisions, not upstream mandates: non-streaming replies; stable request IDs for transport recovery; durable history in SQLite; plain CSS/native fetch; LocalRuntime first; explicit-only specialist invocation; no frontend scaffold or selected component test runner in this authoring task.

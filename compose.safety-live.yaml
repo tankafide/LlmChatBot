@@ -1,0 +1,15 @@
+services:
+  safety-live:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      AUTOASSIST_CONFIG_FILE: /app/config/dealerships.json
+    volumes:
+      - ./scripts/smoke-safety.py:/app/smoke-safety.py:ro
+      - ./docs/context/inventory:/app/docs/context/inventory:ro
+      - ./config/dealerships.json:/app/config/dealerships.json:ro
+    command: ["python", "smoke-safety.py", "--chat"]

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoAssist — visual reference</title>
+  <link rel="stylesheet" href="../../../../frontend/src/styles/tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--aa-canvas); color: var(--aa-text); font: var(--aa-text-body)/var(--aa-leading) var(--aa-font); }
+    a { color: var(--aa-action); text-underline-offset: 0.2em; }
+    a:hover { color: var(--aa-action-hover); }
+    :focus-visible { outline: 3px solid var(--aa-focus); outline-offset: 3px; box-shadow: 0 0 0 3px var(--aa-focus-gap); }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: var(--aa-text-title); line-height: var(--aa-leading-heading); letter-spacing: -0.035em; font-weight: 650; }
+    h2 { font-size: var(--aa-text-heading); line-height: var(--aa-leading-heading); font-weight: 650; }
+    h3 { font-size: var(--aa-text-body); font-weight: 650; }
+    button, textarea { font: inherit; }
+    .note { padding: var(--aa-space-3) var(--aa-space-5); text-align: center; color: var(--aa-text-muted); font-size: var(--aa-text-small); }
+    .shell { display: grid; grid-template-columns: 14rem minmax(0, 1fr); max-width: var(--aa-shell-width); margin: var(--aa-space-4) auto var(--aa-space-7); min-width: 0; border: 1px solid var(--aa-border); border-radius: var(--aa-radius-composer); background: var(--aa-surface); box-shadow: var(--aa-shadow); }
+    .rail { padding: var(--aa-space-6) var(--aa-space-5); border-radius: var(--aa-radius-composer) 0 0 var(--aa-radius-composer); color: var(--aa-chrome-text); background: var(--aa-chrome); }
+    .brand { display: flex; gap: var(--aa-space-3); align-items: center; font-size: var(--aa-text-heading); font-weight: 650; letter-spacing: -0.025em; }
+    .mark { display: inline-grid; place-items: center; flex: 0 0 2rem; width: 2rem; height: 2rem; border-radius: var(--aa-radius-control); background: var(--aa-chrome-accent); color: var(--aa-chrome); }
+    .mark svg { width: 1.25rem; height: 1.25rem; }
+    .rail-caption { margin-top: var(--aa-space-2); color: var(--aa-chrome-muted); font-size: var(--aa-text-small); }
+    nav { display: grid; gap: var(--aa-space-2); margin-top: var(--aa-space-7); }
+    nav a { display: flex; align-items: center; min-height: var(--aa-control-size); padding: var(--aa-space-2) var(--aa-space-3); border-radius: var(--aa-radius-control); color: var(--aa-chrome-text); text-decoration: none; }
+    nav a:hover, nav a:focus-visible { color: var(--aa-chrome); background: var(--aa-chrome-accent); }
+    .rail-footer { margin-top: var(--aa-space-7); color: var(--aa-chrome-muted); font-size: var(--aa-text-small); }
+    main { min-width: 0; }
+    .topline { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--aa-space-3); padding: var(--aa-space-5) var(--aa-space-6); border-bottom: 1px solid var(--aa-border); font-size: var(--aa-text-small); }
+    .muted { color: var(--aa-text-muted); }
+    .eyebrow { color: var(--aa-action); font-size: var(--aa-text-small); font-weight: 650; }
+    .conversation { max-width: var(--aa-content-width); margin: auto; padding: var(--aa-space-7) var(--aa-space-6) var(--aa-space-6); }
+    .intro { margin-bottom: var(--aa-space-7); }
+    .intro h1 { margin: var(--aa-space-2) 0 var(--aa-space-3); }
+    .intro p { max-width: 58ch; }
+    .exchange { display: grid; gap: var(--aa-space-6); }
+    .user { justify-self: end; max-width: 85%; }
+    .speaker { display: block; margin-bottom: var(--aa-space-2); font-size: var(--aa-text-small); font-weight: 650; }
+    .user .speaker { text-align: right; }
+    .bubble { background: var(--aa-user-surface); border-radius: var(--aa-radius-message); padding: var(--aa-space-3) var(--aa-space-4); overflow-wrap: anywhere; }
+    .assistant { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: var(--aa-space-3); }
+    .assistant .mark { background: var(--aa-action); color: var(--aa-on-action); }
+    .answer p + p { margin-top: var(--aa-space-3); }
+    .answer p { max-width: 65ch; }
+    .answer { min-width: 0; overflow-wrap: anywhere; }
+    .capabilities { display: flex; flex-wrap: wrap; gap: var(--aa-space-2); margin-top: var(--aa-space-4); padding: 0; list-style: none; }
+    .capabilities li { border-left: 2px solid var(--aa-border); padding-left: var(--aa-space-3); margin-right: var(--aa-space-2); font-size: var(--aa-text-small); color: var(--aa-text-muted); }
+    .composer { margin-top: var(--aa-space-7); padding: var(--aa-space-4); border: 1px solid var(--aa-control-border); border-radius: var(--aa-radius-composer); box-shadow: var(--aa-shadow); }
+    .composer label { display: block; font-size: var(--aa-text-small); font-weight: 650; margin-bottom: var(--aa-space-2); }
+    textarea { display: block; width: 100%; min-width: 0; min-height: 5rem; resize: vertical; padding: var(--aa-space-2); border: 1px solid var(--aa-control-border); border-radius: var(--aa-radius-control); color: var(--aa-text); background: var(--aa-surface); line-height: var(--aa-leading); }
+    textarea::placeholder { color: var(--aa-text-muted); opacity: 1; }
+    .composer-bottom { display: flex; justify-content: space-between; align-items: center; gap: var(--aa-space-3); margin-top: var(--aa-space-3); }
+    .composer-bottom p { font-size: var(--aa-text-small); color: var(--aa-text-muted); }
+    .button { display: inline-flex; justify-content: center; align-items: center; min-height: var(--aa-control-size); min-width: var(--aa-control-size); padding: var(--aa-space-2) var(--aa-space-4); border: 1px solid transparent; border-radius: var(--aa-radius-control); background: var(--aa-action); color: var(--aa-on-action); font-size: var(--aa-text-small); font-weight: 650; text-decoration: none; transition: background-color var(--aa-motion); }
+    a.button:hover { background: var(--aa-action-hover); color: var(--aa-on-action); }
+    a.button:active { background: var(--aa-action-pressed); }
+    .button:disabled { background: var(--aa-surface-subtle); color: var(--aa-text-muted); border-color: var(--aa-border); cursor: not-allowed; }
+    .small-note { margin-top: var(--aa-space-3); font-size: var(--aa-text-small); color: var(--aa-text-muted); }
+    .reference-section { border-top: 1px solid var(--aa-border); padding: var(--aa-space-6); scroll-margin-top: var(--aa-space-4); }
+    .section-intro { margin: var(--aa-space-2) 0 var(--aa-space-5); color: var(--aa-text-muted); font-size: var(--aa-text-small); }
+    .state-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--aa-space-4); }
+    .state { padding: var(--aa-space-4); border-radius: var(--aa-radius-message); background: var(--aa-surface-subtle); }
+    .state p { margin-top: var(--aa-space-2); font-size: var(--aa-text-small); }
+    .warning { color: var(--aa-warning-text); background: var(--aa-warning-surface); }
+    .error { color: var(--aa-error-text); background: var(--aa-error-surface); }
+    .success { color: var(--aa-success-text); background: var(--aa-success-surface); }
+    .token-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--aa-space-4); }
+    .swatch { height: 3rem; border: 1px solid var(--aa-border); border-radius: var(--aa-radius-control); margin-bottom: var(--aa-space-2); }
+    .token-grid p { font-size: var(--aa-text-small); }
+    .tokens-footer { margin-top: var(--aa-space-5); }
+    @media (max-width: 52rem) {
+      .shell { display: block; margin: var(--aa-space-2); }
+      .rail { padding: var(--aa-space-4); border-radius: var(--aa-radius-composer) var(--aa-radius-composer) 0 0; }
+      nav { display: flex; flex-wrap: wrap; margin-top: var(--aa-space-4); gap: var(--aa-space-1); }
+      .rail-footer { display: none; }
+      .topline { padding: var(--aa-space-4); }
+      .conversation { padding: var(--aa-space-6) var(--aa-space-4); }
+      .reference-section { padding: var(--aa-space-5) var(--aa-space-4); }
+      .state-grid, .token-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 24rem) {
+      h1 { font-size: var(--aa-text-title-small); }
+      .state-grid { grid-template-columns: minmax(0, 1fr); }
+      .composer-bottom { align-items: flex-start; flex-direction: column; }
+      .user { max-width: 95%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button { transition: none; }
+    }
+    @media (forced-colors: active) {
+      .button, .state, .mark, .bubble { border: 1px solid CanvasText; }
+      :focus-visible { outline-color: Highlight; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <p class="note">Visual reference · Illustrative conversation · No live inventory or message submission</p>
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 17 7-11 7 11M8 13h8"/></svg></span>AutoAssist</div>
+      <p class="rail-caption">A clearer way to find your next car.</p>
+      <nav aria-label="Visual reference sections">
+        <a href="#conversation">Conversation</a>
+        <a href="#states">State treatments</a>
+        <a href="#tokens">Visual foundation</a>
+      </nav>
+      <p class="rail-footer">Graphite &amp; teal<br>Chat interface direction<br>Reference edition 01</p>
+    </aside>
+    <main>
+      <div class="topline"><strong>Vehicle discovery</strong><span class="muted">AI dealership assistant</span></div>
+      <section class="conversation" id="conversation" aria-labelledby="conversation-title">
+        <header class="intro">
+          <span class="eyebrow">A little clarity. A better next step.</span>
+          <h1 id="conversation-title">Find what fits you.</h1>
+          <p class="muted">A focused conversation about your next vehicle, with inventory details and safety information when available.</p>
+        </header>
+        <div class="exchange" aria-label="Illustrative conversation">
+          <div class="user"><span class="speaker">You</span><p class="bubble">I'm looking for an SUV under $30,000. Where should we start?</p></div>
+          <div class="assistant">
+            <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 17 7-11 7 11M8 13h8"/></svg></span>
+            <div class="answer"><span class="speaker">AutoAssist</span><p>Let's narrow it down. Is there a make or model you prefer, or should we start with your budget and body type?</p><p>When we find a vehicle, we can look at its details and check available NHTSA recall and crash-rating information.</p><ul class="capabilities" aria-label="Planned capabilities"><li>Inventory details</li><li>Vehicle follow-ups</li><li>Safety information</li></ul></div>
+          </div>
+        </div>
+        <div class="composer">
+          <label for="draft">Your message</label>
+          <textarea id="draft" rows="2" placeholder="Tell me what matters to you…" aria-describedby="reference-only"></textarea>
+          <div class="composer-bottom"><p id="reference-only">Reference only. Nothing you type is sent.</p><button class="button" type="button" disabled>Send <span aria-hidden="true">&nbsp;↑</span></button></div>
+        </div>
+        <p class="small-note">The reference demonstrates appearance. Actual responses must be grounded in retrieved data.</p>
+      </section>
+      <section class="reference-section" id="states" aria-labelledby="states-title">
+        <h2 id="states-title">Clear in every state.</h2>
+        <p class="section-intro">Reference examples, not live request or vehicle statuses. Meaning stays visible in text.</p>
+        <div class="state-grid">
+          <article class="state"><h3>Pending</h3><p>Looking that up…<br>Your message is still being processed.</p></article>
+          <article class="state warning"><h3>Safety data unavailable</h3><p>The recall lookup could not be completed. This does not mean there are no recalls.</p></article>
+          <article class="state error"><h3>Request interrupted</h3><p>This request did not finish. Its message remains in your conversation.</p></article>
+          <article class="state success"><h3>Operation completed</h3><p>Success color describes a completed operation. It never certifies that a vehicle is safe.</p></article>
+        </div>
+      </section>
+      <section class="reference-section" id="tokens" aria-labelledby="tokens-title">
+        <h2 id="tokens-title">One visual foundation.</h2>
+        <p class="section-intro">Light reading surfaces. Graphite structure. Teal for emphasis. Shared values live in tokens.css.</p>
+        <div class="token-grid">
+          <div><div class="swatch" style="background:var(--aa-chrome)"></div><p>Graphite chrome</p></div>
+          <div><div class="swatch" style="background:var(--aa-action)"></div><p>Teal action</p></div>
+          <div><div class="swatch" style="background:var(--aa-canvas)"></div><p>Quiet canvas</p></div>
+          <div><div class="swatch" style="background:var(--aa-user-surface)"></div><p>User surface</p></div>
+        </div>
+        <div class="tokens-footer"><a class="button" href="#conversation">Back to conversation <span aria-hidden="true">&nbsp;↑</span></a></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
