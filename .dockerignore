@@ -14,7 +14,6 @@ node_modules
 **/test-results
 **/playwright-report
 data
-prompt history
 *.db
 *.db-*
 *.sqlite*

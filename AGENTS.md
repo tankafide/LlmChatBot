@@ -10,9 +10,6 @@ Build a clear, working prototype of an LLM-powered dealership chatbot exposed th
 
 Favor a small, complete system that is easy to explain and defend. The source inventory is stored at `docs/context/inventory/data.csv`; inspect and import that file rather than inventing project data.
 
-## Prompt history
-Before acting on each user prompt, save its full text verbatim in a new Markdown file under `prompt history/`, including follow-ups and corrections. Use a filename such as `YYYY-MM-DD_HH-mm-ss.md` (add a suffix for collisions) and a human-readable timestamp including the time zone/UTC offset in the file. Use America/Chicago local time. Log user prompts, not tool output or assistant reasoning. Do not overwrite prior entries. If a prompt contains credentials, redact those values and mark the redaction explicitly before saving or committing.
-
 ## Prototype workflow
 - Keep implementation plans and meaningful plan changes in `docs/plans/`; keep plans short and current.
 - Breaking changes are welcome. Update the plan, code, and affected tests together. Do not preserve obsolete behavior just to satisfy old tests.
