@@ -2,7 +2,7 @@
 
 ![AutoAssist conversation demo](docs/assets/autoassist-demo.gif)
 
-AutoAssist is an LLM-powered dealership chatbot built for the Mia Labs take-home interview. A
+AutoAssist is an LLM-powered dealership chatbot. A
 customer can search real dealership inventory in natural language, select a vehicle, ask contextual
 follow-up questions, and retrieve NHTSA recall and crash-test information. The application exposes
 that behavior through a durable HTTP API; the small React client above is a demonstration surface,
@@ -18,7 +18,7 @@ not erase context or cause completed requests to run twice.
 
 | Technology | Role | Why it fits this prototype |
 | --- | --- | --- |
-| Python 3.13 | Backend runtime | Clear domain code, mature API/data tooling, and a good fit for a short take-home that must remain easy to explain. |
+| Python 3.13 | Backend runtime | Clear domain code, mature API/data tooling, and a good fit for a focused system that must remain easy to explain. |
 | FastAPI + Uvicorn | HTTP API and application lifecycle | Typed request validation and OpenAPI come from the same schemas used by the running app. Lifespan provides one explicit place to construct and close database and network resources. |
 | Pydantic v2 + pydantic-settings | API contracts and configuration | Strict validation keeps malformed requests and configuration out of the application core. Secrets are referenced by environment-variable name, not stored in source or SQLite. |
 | SQLAlchemy 2 + SQLite | Relational persistence | SQLAlchemy provides explicit sessions, transactions, constraints, and testable queries. File-backed SQLite gives the prototype real restart durability without adding a database service. |
@@ -141,7 +141,7 @@ tool loop from creating unbounded work.
 
 ## Inventory import and query behavior
 
-The supplied assignment inventory is committed at
+The source inventory is committed at
 [`docs/context/inventory/data.csv`](docs/context/inventory/data.csv). A fresh database intentionally
 contains no inventory until this file is imported while the server is stopped.
 
@@ -212,7 +212,7 @@ $dealership = $dealerships.items | Where-Object slug -eq "mia-motors"
 $dealershipId = $dealership.id
 ```
 
-Run a five-dimension combined query. The assignment row `AA-1001` is a 2022 Toyota RAV4 SUV priced
+Run a five-dimension combined query. Source row `AA-1001` is a 2022 Toyota RAV4 SUV priced
 at `$26,335.00`.
 
 ```powershell
@@ -319,7 +319,7 @@ uv run --project backend pytest backend/tests -q
 
 The tests use real temporary, file-backed SQLite databases. Model and NHTSA fakes sit at external
 boundaries while real HTTP routes, application services, repositories, transactions, grounding,
-rendering, and recovery behavior execute. Coverage includes the complete assignment CSV import,
+rendering, and recovery behavior execute. Coverage includes the complete source CSV import,
 combined filters, dealership isolation, contextual selection, both safety branches, malformed and
 unavailable upstream data, idempotent terminal replay, concurrency, cancellation, commit faults,
 application recreation, and abrupt process termination.
@@ -346,14 +346,14 @@ checked for required columns and indexes before bootstrap or recovery writes.
 After a schema change, stop the backend and recreate only the intended development database. For a
 local run, back up if needed and remove `data/autoassist.db` plus its SQLite sidecars. For Docker,
 resolve the exact Compose volume with `docker volume ls`, verify that it is the AutoAssist development
-volume, and remove only that volume. Reimport the assignment CSV afterward. Normal
+volume, and remove only that volume. Reimport the source CSV afterward. Normal
 `docker compose down` must not use `--volumes`.
 
 ## Deliberate limits
 
 - Dealership IDs provide data routing and isolation, not authentication or production authorization.
 - One Uvicorn worker owns one SQLite volume. Multi-worker coordination, horizontal scaling, high
-  availability, backups, and disaster recovery are outside this take-home.
+  availability, backups, and disaster recovery are outside this local prototype.
 - NHTSA model-level data does not establish VIN-specific recall applicability, repair completion,
   or a safety guarantee. Inventory does not contain VINs or comparison weight.
 - NHTSA data may be partial, unrated, stale, unavailable, or ambiguous. There is no background
@@ -384,6 +384,6 @@ That route shows the core design claim: the backend lets an LLM interpret conver
 scope, facts, transactions, durable state, error meaning, and recovery under ordinary application
 control.
 
-AI-assisted development was used for this take-home, as expected by the assignment. The resulting
-behavior is documented and tested at the system boundaries rather than relying on generated-code
-volume as evidence of correctness.
+AI-assisted development was used throughout the project. The resulting behavior is documented and
+tested at the system boundaries rather than relying on generated-code volume as evidence of
+correctness.

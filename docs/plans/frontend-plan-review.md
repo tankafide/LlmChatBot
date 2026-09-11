@@ -15,7 +15,7 @@ Verdict: sound architecture and scope, with two recovery contracts to clarify be
 
 The backend-owned transcript, same-ID transport retry, deliberately new IDs for terminal retries, proxy networking, generated API types, and isolated restart smoke are appropriate. ExternalStoreRuntime supports application-owned messages and capability-based callbacks according to its current official documentation: https://www.assistant-ui.com/docs/runtimes/custom/external-store . No backend endpoint/schema redesign is indicated.
 
-Phase A can proceed; clarify the two recovery contracts before phase B. The complete browser matrix and restart harness are substantial optional follow-on work for the original take-home timebox. Keep required API verification ahead of UI polish.
+Phase A can proceed; clarify the two recovery contracts before phase B. The complete browser matrix and restart harness are substantial optional follow-on work. Keep required API verification ahead of UI polish.
 
 Evidence: inspected the supplied plan, repository frontend plan, stack baseline, frontend guidance, API schemas/routes, application factory, conversation service/repository, Compose, and step-four verification plan; checked the linked assistant-ui, Vite, and openapi-typescript documentation. No dependency installation, build, browser run, or behavioral tests were performed. Compatibility remains an implementation check.
 

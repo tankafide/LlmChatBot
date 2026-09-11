@@ -5,7 +5,7 @@ description: Review an AutoAssist diff, implementation, or specified code scope 
 
 # AutoAssist review
 
-Produce an evidence-based review of the requested scope, proportionate to this interview prototype. Follow repository AGENTS.md, accepted plans, and actual contracts. Read existing manifests, implementation, tests, and the relevant section of docs/architecture.md when present; documentation describes intended behavior, while execution and code establish what exists.
+Produce an evidence-based review of the requested scope, proportionate to this focused prototype. Follow repository AGENTS.md, accepted plans, and actual contracts. Read existing manifests, implementation, tests, and the relevant section of docs/architecture.md when present; documentation describes intended behavior, while execution and code establish what exists.
 
 Read the relevant parts of the authoritative [shared stack baseline](../../../docs/stack-baseline.md), including its session and request lifecycle contracts when affected. [Tech-stack](../tech-stack/SKILL.md) remains the explicit-only stack decision workflow; do not implicitly read its body. Do not invent lifecycle semantics or duplicate the baseline's lifecycle table.
 

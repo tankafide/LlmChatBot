@@ -17,7 +17,7 @@ Resolved in the implementation plan on 2026-09-10 following user authorization: 
 
 ## Scope and sequencing
 
-The plan is substantially larger than a small 2–3 hour assignment slice. Its durability requirements mostly come from the already accepted baseline, so silently deleting them would conflict with project decisions. Keep A–D as separately finishable milestones and describe the schedule accordingly. Phase A can start after these brief clarifications are recorded; no broad redesign is needed.
+The plan is substantially larger than a small implementation slice. Its durability requirements mostly come from the already accepted baseline, so silently deleting them would conflict with project decisions. Keep A–D as separately finishable milestones and describe the schedule accordingly. Phase A can start after these brief clarifications are recorded; no broad redesign is needed.
 
 The provider import experiment is useful but does not prove every listed run guard. Make a focused pinned-version scripted exchange an early B check for structured output, per-request input accounting, timeout and retry configuration, and failed-tool attempt counting. Current Pydantic AI provider/history documentation was opened during review; no live provider or Linux compatibility pass is claimed.
 

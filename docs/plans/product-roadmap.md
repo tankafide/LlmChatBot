@@ -5,9 +5,9 @@ Status: high-level guide; steps 1 and 2 are implemented and deterministically ve
 
 ## Outcome and scope
 
-Deliver the Mia Labs assignment: an HTTP chatbot that searches dealership inventory, answers vehicle follow-ups, retrieves NHTSA recalls and crash-test ratings, and preserves conversations and messages across restarts. Finish with reproducible setup, meaningful tests, and a README suitable for a 30–60 minute walkthrough.
+Deliver AutoAssist: an HTTP chatbot that searches dealership inventory, answers vehicle follow-ups, retrieves NHTSA recalls and crash-test ratings, and preserves conversations and messages across restarts. Finish with reproducible setup, meaningful tests, and reviewer-friendly documentation.
 
-Use four large implementation chunks, in order. Create a focused sub-plan in `docs/plans/` when starting each chunk, linked back here; keep technical contracts and exact commands in those sub-plans. Include tests and documentation with each chunk. Aim for the assignment's 2–3 hour implementation timebox, treating it as a target rather than a guarantee; prioritize required API behavior over optional UI and polish.
+Use four large implementation chunks, in order. Create a focused sub-plan in `docs/plans/` when starting each chunk, linked back here; keep technical contracts and exact commands in those sub-plans. Include tests and documentation with each chunk. Prioritize required API behavior over optional UI and polish.
 
 ## Shared decisions
 

@@ -6,7 +6,7 @@ Parent: [Product roadmap, step 1](product-roadmap.md#1-working-foundation-and-de
 
 ## Outcome and evidence
 
-Deliver a runnable HTTP API with persistent dealerships, named LLM connection configuration, combined inventory search, and vehicle details. Complete the import from `docs/context/inventory/data.csv`. Keep this slice small enough to explain in the interview; chat, conversation tables/lifecycle, provider calls, NHTSA, frontend, and CI workflow remain in later roadmap steps.
+Deliver a runnable HTTP API with persistent dealerships, named LLM connection configuration, combined inventory search, and vehicle details. Complete the import from `docs/context/inventory/data.csv`. Keep this slice small enough for a focused review; chat, conversation tables/lifecycle, provider calls, NHTSA, frontend, and CI workflow remain in later roadmap steps.
 
 Implemented repository state: the backend package, committed uv lock, SQLite models/services/routes, Docker/Compose configuration, tests, README, and architecture notes now exist. Local Ruff, format, strict mypy, and pytest checks pass. Docker Desktop 4.89.0, Engine 29.7.2, and Compose v5.5.0 are installed and the engine is reachable through the supported Desktop CLI workflow. The assignment CSV is stored under `docs/context/inventory/`; synthetic records remain test-only until phase C implements the importer.
 

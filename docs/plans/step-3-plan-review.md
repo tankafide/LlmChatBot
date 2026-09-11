@@ -19,7 +19,7 @@ Resolution: all four findings below are addressed in the revised [Step 3 plan](s
 
 ## Scope and verification
 
-This is a large specification for a 2–3 hour assignment. Keep the existing A/B vertical slices, reuse Step 2 recovery tests, and avoid making optional category expansion or performance experiments prerequisites to demonstrating the required recalls and four summary ratings. This is a scope recommendation, not a separate correctness finding.
+This is a large specification for a focused implementation slice. Keep the existing A/B vertical slices, reuse Step 2 recovery tests, and avoid making optional category expansion or performance experiments prerequisites to demonstrating the required recalls and four summary ratings. This is a scope recommendation, not a separate correctness finding.
 
 Inspected the supplied plan, repository Step 3/Step 2 plans, shared baseline, inventory/module layout, dependency manifest, chat contracts, and conversation persistence/service code. Used AutoAssist planning, NHTSA, architecture, and backend verification guidance. No application tests were run for this document-only review. A read-only request to the official RAV4 recall endpoint confirmed the example envelope; browser retrieval of the crash-detail example failed, so no renewed crash-payload validation is claimed.
 

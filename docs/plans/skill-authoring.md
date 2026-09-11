@@ -14,7 +14,7 @@ Each agent owns only its assigned `.agents/skills/<name>/` directory. Do not edi
 
 Research current official primary sources with web tools, open the relevant pages, and distill domain-specific agent failure modes into decision rules and observable evidence. Put a short dated source/rationale record in the skill's `references/research.md`, linked as optional background. Distinguish project decisions from upstream advice. No copied manuals or generic tutorials. Use concise SKILL.md and only necessary supporting references. Create `agents/openai.yaml` with `policy.allow_implicit_invocation: true` for plan/develop/review and false for the 11 specialists. No automatic subagent fanout in authored skills.
 
-Validate using skill-creator's quick_validate.py if Python is available. Report files, sources, validation, and unresolved contradictions. Keep instructions useful across planning/development/review and proportional to a small interview prototype. At authoring time application code/tests did not yet exist, so this plan prohibited inventing executable commands, a selected provider, imported inventory, or completed checks; current implementation facts now live in the active plan and README.
+Validate using skill-creator's quick_validate.py if Python is available. Report files, sources, validation, and unresolved contradictions. Keep instructions useful across planning/development/review and proportional to a focused prototype. At authoring time application code/tests did not yet exist, so this plan prohibited inventing executable commands, a selected provider, imported inventory, or completed checks; current implementation facts now live in the active plan and README.
 
 ## Accepted clarification
 
