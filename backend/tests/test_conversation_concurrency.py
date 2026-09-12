@@ -64,7 +64,12 @@ async def test_four_turn_limit_has_no_queue_and_identity_wins_under_saturation(
             if item["slug"] == "mia-motors"
         )
         conversations = [
-            (await client.post(f"/dealerships/{dealership_id}/conversations", json={})).json()["id"]
+            (
+                await client.post(
+                    f"/dealerships/{dealership_id}/conversations",
+                    json={"creation_id": str(uuid4())},
+                )
+            ).json()["id"]
             for _ in range(5)
         ]
         request_ids = [str(uuid4()) for _ in range(5)]
@@ -77,11 +82,6 @@ async def test_four_turn_limit_has_no_queue_and_identity_wins_under_saturation(
 
         tasks = [asyncio.create_task(submit(index)) for index in range(4)]
         try:
-            await asyncio.sleep(0.5)
-            states = [
-                (task.done(), task.result().status_code if task.done() else None) for task in tasks
-            ]
-            assert runner.calls == 4, states
             await asyncio.wait_for(runner.four_started.wait(), timeout=2)
             fifth = await submit(4)
             assert fifth.status_code == 503
@@ -91,16 +91,18 @@ async def test_four_turn_limit_has_no_queue_and_identity_wins_under_saturation(
                 f"/dealerships/{dealership_id}/conversations/{conversations[0]}/messages",
                 json={"request_id": request_ids[0], "text": "request 0"},
             )
-            assert replay_active.status_code == 409
-            assert replay_active.json()["error"]["code"] == "request_in_progress"
+            assert replay_active.status_code == 202
+            assert replay_active.json()["status"] == "in_progress"
             assert runner.calls == 4
         finally:
             runner.release.set()
         completed = await asyncio.gather(*tasks)
-        assert all(response.status_code == 200 for response in completed)
+        assert all(response.status_code == 202 for response in completed)
 
+        await app.state.conversation_service._limiter.wait_idle(5)
         retried_fifth = await submit(4)
-        assert retried_fifth.status_code == 200
+        assert retried_fifth.status_code == 202
+        await app.state.conversation_service._limiter.wait_idle(5)
         assert runner.calls == 5
 
 
@@ -128,7 +130,9 @@ async def test_cancellation_settles_interruption_and_releases_capacity(
             if item["slug"] == "mia-motors"
         )
         conversation_id = (
-            await client.post(f"/dealerships/{dealership_id}/conversations", json={})
+            await client.post(
+                f"/dealerships/{dealership_id}/conversations", json={"creation_id": str(uuid4())}
+            )
         ).json()["id"]
         request_id = str(uuid4())
         url = f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages"
@@ -136,6 +140,8 @@ async def test_cancellation_settles_interruption_and_releases_capacity(
             client.post(url, json={"request_id": request_id, "text": "Cancel this turn"})
         )
         await asyncio.wait_for(runner.started.wait(), timeout=2)
+        assert (await task).status_code == 202
+        task = next(iter(app.state.conversation_service._tasks.values()))
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -148,4 +154,4 @@ async def test_cancellation_settles_interruption_and_releases_capacity(
             url,
             json={"request_id": str(uuid4()), "text": "A deliberate retry"},
         )
-        assert next_request.status_code == 200
+        assert next_request.status_code == 202

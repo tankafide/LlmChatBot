@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import cast
 
 import psycopg
-from sqlalchemy import Engine, create_engine, event, inspect, select
+from sqlalchemy import DateTime, Engine, create_engine, event, inspect, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
@@ -89,7 +89,18 @@ def initialize_schema(engine: Engine) -> None:
     for table in Base.metadata.sorted_tables:
         if table.name not in existing:
             continue
-        columns = {column["name"] for column in inspector.get_columns(table.name)}
+        reflected = {column["name"]: column for column in inspector.get_columns(table.name)}
+        columns = set(reflected)
+        for column in table.columns:
+            actual_column = reflected.get(column.name)
+            if isinstance(column.type, DateTime) and actual_column is not None:
+                actual_type = actual_column["type"]
+                if (
+                    not isinstance(actual_type, DateTime)
+                    or actual_column["nullable"]
+                    or (engine.dialect.name == "postgresql" and not actual_type.timezone)
+                ):
+                    problems.append(f"{table.name} incompatible timestamp: {column.name}")
         missing_columns = set(table.columns.keys()) - columns
         if missing_columns:
             problems.append(f"{table.name} missing columns: {', '.join(sorted(missing_columns))}")

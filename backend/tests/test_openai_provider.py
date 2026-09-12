@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from pydantic_ai.messages import ModelRequest, ToolCallPart, UserPromptPart
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
 from test_conversation_api import FakeRunner, mia_dealership_id
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.answers import GroundedAnswer
@@ -33,7 +35,11 @@ def test_default_openai_wiring_and_missing_key(tmp_path, monkeypatch, with_key):
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     app = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}"))
     with TestClient(app) as client:
-        response = client.post(f"/dealerships/{mia_dealership_id(client)}/conversations", json={})
+        response = post_and_wait(
+            client,
+            f"/dealerships/{mia_dealership_id(client)}/conversations",
+            json={"creation_id": str(uuid4())},
+        )
         assert response.status_code == (201 if with_key else 503)
     assert calls == ([("gpt-5.6-luna", "test-key")] if with_key else [])
     assert runner.closed is with_key

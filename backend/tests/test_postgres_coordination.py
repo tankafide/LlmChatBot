@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from threading import Barrier
+from uuid import uuid4
 
 from sqlalchemy import Engine, update
 from sqlalchemy.exc import IntegrityError
@@ -29,13 +30,9 @@ def test_postgres_coordinates_admission_recovery_and_terminal_writes(
         session.flush()
         dealership_id = dealership.id
 
-    first = ConversationStore(
-        session_factory, ConversationRepository(), stale_request_seconds=120.0
-    )
-    second = ConversationStore(
-        session_factory, ConversationRepository(), stale_request_seconds=120.0
-    )
-    conversation = first.create(dealership_id, "test", "openai", "test-model")
+    first = ConversationStore(session_factory, ConversationRepository(), lease_seconds=120.0)
+    second = ConversationStore(session_factory, ConversationRepository(), lease_seconds=120.0)
+    conversation = first.create(dealership_id, "test", "openai", "test-model", str(uuid4()))
 
     admission_gate = Barrier(2)
 
@@ -79,7 +76,7 @@ def test_postgres_coordinates_admission_recovery_and_terminal_writes(
         session.execute(
             update(ChatRequest)
             .where(ChatRequest.id == stale.id)
-            .values(updated_at=datetime(2000, 1, 1, tzinfo=UTC).isoformat())
+            .values(lease_expires_at=datetime(2000, 1, 1, tzinfo=UTC))
         )
     assert second.recover_interrupted() == 1
     recovered, _ = second.inspect(

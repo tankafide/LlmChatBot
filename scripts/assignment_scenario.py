@@ -6,6 +6,7 @@ The caller owns application/container startup, restart, external fakes, and clea
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlencode
@@ -25,7 +26,19 @@ def _expect_status(actual: int, expected: int, body: Json, action: str) -> None:
 def _message(request: Request, url: str, text: str) -> tuple[str, Json]:
     request_id = str(uuid4())
     status, body = request("POST", url, {"request_id": request_id, "text": text})
-    _expect_status(status, 200, body, f"submit {text!r}")
+    _expect_status(status, 202, body, f"admit {text!r}")
+    deadline = time.monotonic() + 70
+    while time.monotonic() < deadline:
+        status, state = request(
+            "GET", url.removesuffix("/messages") + "/requests/" + request_id, None
+        )
+        _expect_status(status, 200, state, "read request status")
+        if state["status"] != "in_progress":
+            body = state["outcome"]
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("Request did not finish within the polling budget")
     if body.get("request_id") != request_id or body.get("status") != "completed":
         raise AssertionError(
             f"submission did not return its completed request identity: {body!r}"
@@ -109,7 +122,9 @@ def before_restart(request: Request, expected_vehicle: Json) -> Json:
         raise AssertionError(f"contradictory search was not empty: {empty!r}")
 
     status, conversation = request(
-        "POST", f"/dealerships/{dealership_id}/conversations", {}
+        "POST",
+        f"/dealerships/{dealership_id}/conversations",
+        {"creation_id": str(uuid4())},
     )
     _expect_status(status, 201, conversation, "create conversation")
     conversation_id = conversation["id"]

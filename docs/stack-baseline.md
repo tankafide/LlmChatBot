@@ -36,19 +36,19 @@ Assumption: TypeScript runs in the browser and Python on the server. Clarify if 
 
 ## Chat request lifecycle
 
-Use non-streaming replies and PostgreSQL-backed coordination across workers. The development container runs two Uvicorn workers; additional stateless instances may share the database. Startup schema/bootstrap uses an advisory lock. Automatic external-run resumption remains deferred. The 120-second recovery threshold measures request age, not worker liveness; it has no renewal heartbeat and assumes synchronized host clocks. Terminal row locking prevents a late completion from overwriting recovery.
+Use non-streaming replies and PostgreSQL-backed coordination across workers. The development container runs two Uvicorn workers; additional stateless instances may share the database. Startup schema/bootstrap uses an advisory lock. Automatic external-run resumption remains deferred. Requests carry PostgreSQL TIMESTAMPTZ leases granted for 120 seconds using clock_timestamp(), renewed every 20 seconds by the owning turn. Each worker sweeps at most 100 expired rows every 30 seconds with skip-locked selection. Startup and scoped submissions use the same expiry predicate. Renewal cannot resurrect expired work. Expiry makes work eligible for recovery; completion can win before recovery locks the row. Terminal row locking prevents a late completion from overwriting recovery.
 
-Create a conversation before submitting its first message. Each submission supplies a client-generated `request_id`, unique within that conversation. Persist its payload, status (`in_progress`, `completed`, `failed`, or `interrupted`), and terminal HTTP status/body. PostgreSQL enforces unique `(conversation_id, request_id)` and at most one active request per conversation. Admission atomically claims the conversation and inserts the request/user message; avoid check-then-insert races and in-memory-only locks.
+Create a conversation before submitting its first message using a client-generated creation_id unique within the dealership. Retain it across uncertain responses and browser reloads; retries return the original conversation and pinned configuration without requiring a live provider. Each submission supplies a client-generated `request_id`, unique within that conversation. Persist its payload, status (`in_progress`, `completed`, `failed`, or `interrupted`), and terminal HTTP status/body. PostgreSQL enforces unique `(conversation_id, request_id)` and at most one active request per conversation. Admission atomically claims the conversation and inserts the request/user message; avoid check-then-insert races and in-memory-only locks.
 
 | Case | Persisted state | API outcome |
 | --- | --- | --- |
-| New valid request, conversation idle | Commit request/user message before calling provider. On success, atomically save assistant reply, complete tool/model replay history, selected-vehicle context, and terminal response; mark completed and release claim. | 200 only after completion commit. |
+| New valid request, conversation idle | Commit request/user message before calling provider. On success, atomically save assistant reply, complete tool/model replay history, selected-vehicle context, and terminal response; mark completed and release claim. | 202 after admission commit and tracked task launch; GET status exposes completion after its commit. |
 | Different request while conversation active | Do not admit or append second message. Other conversations can proceed. | 409 `conversation_busy`; resubmit the unaccepted request later with its original ID. |
-| Same ID/payload while active | No new messages or provider run. | 409 `request_in_progress`; retry later with same ID. |
+| Same ID/payload while active | No new messages or provider run. | 202 in-progress representation; GET the request status. |
 | Same ID/payload after terminal outcome, including lost response or restart | Read stored outcome; no new messages or provider run. Check existing ID/payload before conversation-busy admission. | Replay stored terminal status/body. |
 | Same ID, different payload | No changes. | 409 `request_id_conflict`. |
-| Provider failure or timeout after admission | Keep user message; mark failed, store sanitized error, release claim. No fabricated assistant reply or partial selected-vehicle update. | 502 `provider_error` or 504 `provider_timeout`; same-ID retry replays error. Deliberate new attempt uses a new ID. |
-| Worker stops before completion commit | Keep fresh active requests protected so another worker startup cannot interrupt live work. After the 120-second stale window, startup or a scoped submission check marks the request interrupted, preserves its user message, stores the terminal error, and releases the claim. | Before expiry, same-ID retry returns `request_in_progress`; afterward it returns stored 409 `request_interrupted`. New work uses a new ID; no automatic rerun. |
+| Provider failure or timeout after admission | Keep user message; mark failed, store sanitized error, release claim. No fabricated assistant reply or partial selected-vehicle update. | Status GET returns 200 with failed state and the stored error; same-ID POST replays 502 `provider_error` or 504 `provider_timeout`. Deliberate new attempt uses a new ID. |
+| Worker stops before completion commit | Keep fresh active requests protected so another worker startup cannot interrupt live work. After lease expiry, startup, the bounded background sweep, or a scoped submission check marks the request interrupted, preserves its user message, stores the terminal error, and releases the claim. | Before expiry, same-ID retry returns 202 in-progress; after recovery it returns stored 409 `request_interrupted`. Status GET returns 200 with active state or terminal outcome. New work uses a new ID; no automatic rerun. |
 
 Invalid submissions return 422 and unknown conversations 404 before admission, without appending messages. Rejected submissions are not conversation messages. History exposes admitted user messages with request status and only actual assistant replies. Subsequent model input uses completed turns plus the current user message; failed/interrupted turns remain visible but are excluded from replay. Successful turns retain complete tool-call/result history; partial in-memory tool history may be lost on interruption. Exactly-once provider execution and preservation of uncommitted provider output are not promised.
 
@@ -92,3 +92,24 @@ Defer Redis/Celery, LangChain/LangGraph, vector databases, Next.js, global front
 - https://openapi-ts.dev/introduction
 - https://playwright.dev/docs/intro
 
+
+## Async admission and status transport
+
+POST messages commits admission before returning 202 with conversation_id, request_id and
+status=in_progress. The service owns a tracked execution task keyed by internal request ID;
+provider work survives the POST finishing or the browser disconnecting. Capacity remains reserved
+until execution and cleanup finish. A task-launch failure is conditionally settled before responding.
+Shutdown stops admission, allows 20 seconds for drain, then cancels/joins remaining admission and
+execution work before closing providers. Outstanding writes drain before cancellation settlement.
+An abrupt process loss relies on database lease recovery and never resumes the provider automatically.
+
+GET /dealerships/{dealership_id}/conversations/{conversation_id}/requests/{request_id} validates
+scope, recovers expired work, and returns 200 with durable status. Terminal states include outcome:
+the exact stored public body (completed messages or sanitized error). Active status has no outcome.
+It returns 404 for unknown/wrong scope and 503 for unavailable storage; responses disable caching.
+Terminal POST replay retains its stored HTTP status/body. PostgreSQL persists request state and outcomes.
+
+The browser polls at most 20 times with 0.5, 1, 2, 4, then 5-second capped delays and 15-second
+HTTP deadlines. Failure or exhaustion leaves explicit Check reply recovery with the original ID.
+Reload resumes polling only for server-confirmed active history; uncertain admission requires an
+explicit same-ID submission. Generation checks ignore stale work; no provider progress is invented.

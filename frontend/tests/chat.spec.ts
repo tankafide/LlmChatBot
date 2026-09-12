@@ -39,12 +39,15 @@ async function saved(page: Page, pending = true) {
 type Harness = {
   posts: Submission[];
   creates: number;
+  polls: number;
+  onStatus?: (route: Route) => Promise<void>;
+  onCreate?: (route: Route) => Promise<void>;
   history: Message[];
   onPost?: (route: Route, body: Submission) => Promise<void>;
   onHistory?: (route: Route) => Promise<void>;
 };
 async function harness(page: Page): Promise<Harness> {
-  const h: Harness = { posts: [], creates: 0, history: [] };
+  const h: Harness = { posts: [], creates: 0, polls: 0, history: [] };
   await page.route(/\/api\/(dealerships)(\/|$)/, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/dealerships")
@@ -53,8 +56,51 @@ async function harness(page: Page): Promise<Harness> {
           items: [{ id: dealer, slug: "mia-motors", name: "Mia Motors" }],
         },
       });
+    if (url.pathname.includes("/requests/")) {
+      h.polls++;
+      if (h.onStatus) return h.onStatus(route);
+      const id = url.pathname.split("/").at(-1);
+      const user = h.history.find(
+        (m) => m.request_id === id && m.role === "user",
+      );
+      const assistant = h.history.find(
+        (m) => m.request_id === id && m.role === "assistant",
+      );
+      if (!user)
+        return route.fulfill({
+          status: 404,
+          json: { error: { code: "not_found", message: "Request not found" } },
+        });
+      return route.fulfill({
+        json: {
+          conversation_id: conversation,
+          request_id: id,
+          status: user.request_status,
+          ...(user.request_status === "in_progress"
+            ? {}
+            : {
+                outcome:
+                  user.request_status === "completed"
+                    ? {
+                        conversation_id: conversation,
+                        request_id: id,
+                        status: "completed",
+                        user_message: user,
+                        assistant_message: assistant,
+                      }
+                    : {
+                        error: {
+                          code: user.error_code ?? "request_interrupted",
+                          message: "Terminal request error",
+                        },
+                      },
+              }),
+        },
+      });
+    }
     if (!url.pathname.endsWith("/messages")) {
       h.creates++;
+      if (h.onCreate) return h.onCreate(route);
       return route.fulfill({ status: 201, json: { id: conversation } });
     }
     if (route.request().method() === "GET") {
@@ -80,12 +126,11 @@ async function harness(page: Page): Promise<Harness> {
     };
     h.history.push(user, assistant);
     return route.fulfill({
+      status: 202,
       json: {
         conversation_id: conversation,
         request_id: body.request_id,
-        status: "completed",
-        user_message: user,
-        assistant_message: assistant,
+        status: "in_progress",
       },
     });
   });
@@ -285,66 +330,49 @@ test("double submit is locked; lost response retry uses exact identity", async (
   expect(h.posts[2]).toEqual(h.posts[0]);
 });
 
-test("slow reply shows elapsed wait, recovery guidance and resets after completion", async ({
+test("slow accepted reply survives reload, polls once per cadence and completes without another POST", async ({
   page,
 }) => {
   const h = await harness(page);
   await page.clock.install();
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  h.onPost = async (route, body) => {
-    await gate;
-    await route.fulfill({
+  h.onPost = (route, body) => {
+    h.history = [row(1, body.request_id, body.text, "in_progress")];
+    return route.fulfill({
+      status: 202,
       json: {
         conversation_id: conversation,
         request_id: body.request_id,
-        status: "completed",
-        user_message: row(1, body.request_id, body.text),
-        assistant_message: row(2, body.request_id, "Finished reply"),
+        status: "in_progress",
       },
     });
   };
   await page.goto("/");
   await send(page);
-  await expect(page.getByRole("status")).toContainText(
-    "Requesting your AI reply",
-  );
-  await page.clock.fastForward(16_000);
-  await expect(page.getByRole("status")).toContainText(
-    "taking longer than usual",
-  );
-  await expect(page.getByText("Waiting 16s", { exact: true })).toBeVisible();
-  await page.clock.fastForward(45_000);
-  await expect(page.getByRole("status")).toContainText(
-    "Still waiting for a confirmed result",
-  );
+  await expect(page.getByText("Accepted · Reply in progress")).toBeVisible();
+  await expect.poll(() => h.polls).toBe(1);
+  await page.reload();
+  await expect.poll(() => h.polls).toBe(2);
+  await expect(page.locator(".user")).toHaveCount(1);
+  expect(h.posts).toHaveLength(1);
   await page.setViewportSize({ width: 320, height: 720 });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await expect(
-    page.getByRole("button", { name: "Send", exact: true }),
-  ).toBeDisabled();
-  expect(h.posts).toHaveLength(1);
-  await page.screenshot({
-    path: "test-results/slow-reply-mobile.png",
-    fullPage: true,
-  });
-  release();
+  const body = h.posts[0]!;
+  h.history = [
+    row(1, body.request_id, body.text),
+    row(2, body.request_id, "Finished reply"),
+  ];
+  await page.clock.fastForward(500);
   await expect(page.getByText("Finished reply", { exact: true })).toBeVisible();
-  await expect(page.locator(".optimistic-user")).toHaveCount(0);
-  await expect(page.locator(".user .message-text")).toHaveText("Show SUVs");
-  await expect(page.getByText(/^Waiting \d+s$/)).toHaveCount(0);
-  h.onPost = (route) => route.abort();
-  await send(page, "Another question");
-  await expect(page.getByRole("status")).toContainText(
-    "Could not reach the server",
-  );
-  await expect(page.getByRole("button", { name: "Check reply" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat" })).toBeEnabled();
+  const polls = h.polls;
+  await page.clock.fastForward(60_000);
+  expect(h.polls).toBe(polls);
+  expect(h.posts).toHaveLength(1);
+  await expect(page.locator(".user")).toHaveCount(1);
 });
 
 test("saved provider timeout explains the cause after reload", async ({
@@ -371,7 +399,6 @@ test("saved provider timeout explains the cause after reload", async ({
 });
 for (const [code, status] of [
   ["conversation_busy", 409],
-  ["request_in_progress", 409],
   ["server_busy", 503],
   ["request_id_conflict", 409],
 ] as const) {
@@ -395,10 +422,10 @@ for (const [code, status] of [
     expect(await page.locator(".assistant").count()).toBe(0);
   });
 }
-for (const [status, code, http] of [
-  ["failed", "provider_error", 502],
-  ["failed", "provider_timeout", 504],
-  ["interrupted", "request_interrupted", 409],
+for (const [status, code] of [
+  ["failed", "provider_error"],
+  ["failed", "provider_timeout"],
+  ["interrupted", "request_interrupted"],
 ] as const) {
   test(`${code} updates an existing sequence and a deliberate retry gets a new ID`, async ({
     page,
@@ -406,11 +433,19 @@ for (const [status, code, http] of [
     await saved(page, false);
     const h = await harness(page);
     h.history = [row(1, requestId, "Show SUVs", "in_progress")];
-    h.onPost = (route) =>
-      route.fulfill({ status: http, json: { error: { code, message: code } } });
+    h.onStatus = (route) => route.abort();
     await page.goto("/");
     await expect(page.getByText("Accepted · Reply in progress")).toBeVisible();
-    // Deliberately stale history: terminal response must take precedence.
+    // Deliberately stale history: the status outcome must take precedence.
+    h.onStatus = (route) =>
+      route.fulfill({
+        json: {
+          conversation_id: conversation,
+          request_id: requestId,
+          status,
+          outcome: { error: { code, message: code } },
+        },
+      });
     await page.getByRole("button", { name: "Check reply" }).click();
     await expect(
       page.getByText(
@@ -421,11 +456,11 @@ for (const [status, code, http] of [
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "New chat" })).toBeEnabled();
     await page.getByRole("button", { name: "Try again" }).click();
-    expect(h.posts).toHaveLength(1);
-    h.onPost = undefined;
+    expect(h.posts).toHaveLength(0);
+    h.onStatus = undefined;
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect.poll(() => h.posts.length).toBe(2);
-    expect(h.posts[1]?.request_id).not.toBe(requestId);
+    await expect.poll(() => h.posts.length).toBe(1);
+    expect(h.posts[0]?.request_id).not.toBe(requestId);
     await expect(
       page.getByText("A real inventory reply", { exact: true }),
     ).toBeVisible();
@@ -747,4 +782,145 @@ test("keyboard navigation and rendered color contrast", async ({ page }) => {
       .getByRole("textbox")
       .evaluate((el) => getComputedStyle(el).outlineStyle),
   ).not.toBe("none");
+});
+
+test("lost creation response preserves identity through reload and new chat replaces it", async ({
+  page,
+}) => {
+  const h = await harness(page);
+  const identities: string[] = [];
+  h.onCreate = async (route) => {
+    const body = route.request().postDataJSON() as { creation_id: string };
+    identities.push(body.creation_id);
+    if (identities.length === 1) return route.abort("failed");
+    return route.fulfill({ status: 201, json: { id: conversation } });
+  };
+  await page.goto("/");
+  await send(page);
+  await expect(
+    page.getByText(/Conversation creation was unconfirmed/),
+  ).toBeVisible();
+  expect(h.posts).toHaveLength(0);
+  await page.reload();
+  await send(page);
+  await expect(
+    page.getByText("A real inventory reply", { exact: true }),
+  ).toBeVisible();
+  expect(identities[0]).toMatch(/^[0-9a-f-]{36}$/);
+  expect(identities[1]).toBe(identities[0]);
+  await page.getByRole("button", { name: "New chat" }).click();
+  await send(page);
+  await expect.poll(() => identities.length).toBe(3);
+  expect(identities[2]).not.toBe(identities[0]);
+});
+
+test("polling budget ends with explicit Check reply and keeps the original ID", async ({
+  page,
+}) => {
+  const h = await harness(page);
+  await saved(page);
+  await page.clock.install();
+  h.history = [row(1, requestId, "Show SUVs", "in_progress")];
+  await page.goto("/");
+  for (let count = 1; count < 20; count++) {
+    await expect.poll(() => h.polls).toBe(count);
+    // Wait for the response handler to install its next bounded delay.
+    await page.clock.runFor(50);
+    await page.clock.fastForward(Math.min(500 * 2 ** (count - 1), 5000));
+  }
+  await expect(page.getByRole("button", { name: "Check reply" })).toBeVisible();
+  expect(h.polls).toBe(20);
+  await page.clock.fastForward(60_000);
+  expect(h.polls).toBe(20);
+  expect(h.posts).toHaveLength(0);
+  h.history = [row(1), row(2, requestId, "Recovered reply")];
+  await page.getByRole("button", { name: "Check reply" }).click();
+  await expect(
+    page.getByText("Recovered reply", { exact: true }),
+  ).toBeVisible();
+  expect(h.posts).toHaveLength(0);
+});
+
+test("malformed terminal status stays recoverable without a fabricated reply", async ({
+  page,
+}) => {
+  const h = await harness(page);
+  await saved(page);
+  h.history = [row(1, requestId, "Show SUVs", "in_progress")];
+  h.onStatus = (route) =>
+    route.fulfill({
+      json: {
+        conversation_id: conversation,
+        request_id: requestId,
+        status: "completed",
+        outcome: { assistant_message: "invented" },
+      },
+    });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Check reply" })).toBeVisible();
+  await expect(page.locator(".assistant")).toHaveCount(0);
+  expect(h.posts).toHaveLength(0);
+  h.onStatus = undefined;
+  h.history = [row(1), row(2, requestId, "Actual reply")];
+  await page.getByRole("button", { name: "Check reply" }).click();
+  await expect(page.getByText("Actual reply", { exact: true })).toBeVisible();
+});
+
+test("a late poll cannot restore a conversation after the view changes", async ({
+  page,
+}) => {
+  const h = await harness(page);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  h.onPost = (route, body) => {
+    h.history = [row(1, body.request_id, body.text, "in_progress")];
+    return route.fulfill({
+      status: 202,
+      json: {
+        conversation_id: conversation,
+        request_id: body.request_id,
+        status: "in_progress",
+      },
+    });
+  };
+  h.onHistory = (route) =>
+    route.fulfill({
+      status: 404,
+      json: {
+        error: { code: "not_found", message: "Conversation unavailable" },
+      },
+    });
+  h.onStatus = async (route) => {
+    await gate;
+    const body = h.posts[0]!;
+    await route.fulfill({
+      json: {
+        conversation_id: conversation,
+        request_id: body.request_id,
+        status: "completed",
+        outcome: {
+          conversation_id: conversation,
+          request_id: body.request_id,
+          status: "completed",
+          user_message: row(1, body.request_id, body.text),
+          assistant_message: row(2, body.request_id, "Old reply"),
+        },
+      },
+    });
+  };
+  try {
+    await page.goto("/");
+    await send(page);
+    await expect.poll(() => h.polls).toBe(1);
+    await page.getByRole("button", { name: "New chat" }).click();
+  } finally {
+    release();
+  }
+  await expect(page.getByRole("textbox")).toHaveValue("Show SUVs");
+  await expect(page.locator(".assistant")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeEnabled();
 });

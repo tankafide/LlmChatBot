@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import time
 from dataclasses import dataclass
 from urllib.parse import quote
 
 import httpx
 
+from autoassist.observability import event
 from autoassist.safety.records import Identity, Reason
 
 BASE = "https://api.nhtsa.gov"
 MAX_RESPONSE_BYTES = 512 * 1024
-logger = logging.getLogger(__name__)
 
 
 def recall_url(identity: Identity) -> str:
@@ -102,12 +101,12 @@ class NhtsaClient:
         finally:
             elapsed = time.monotonic() - started
             budget.elapsed += elapsed
-            logger.info(
-                "nhtsa operation=%s conversation=%s request=%s call=%s elapsed=%.3f outcome=%s",
-                operation,
-                budget.conversation_id,
-                budget.request_id,
-                budget.calls,
-                elapsed,
-                outcome,
+            event(
+                "nhtsa_request",
+                operation=operation,
+                conversation_id=budget.conversation_id,
+                request_id=budget.request_id,
+                call=budget.calls,
+                duration_ms=round(elapsed * 1000, 2),
+                outcome=outcome,
             )

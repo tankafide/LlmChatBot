@@ -5,6 +5,12 @@ export type Submission = Schemas["SubmitMessageRequest"];
 export type Dealer = Schemas["DealershipResponse"];
 type History = Schemas["ConversationHistoryResponse"];
 type Reply = Schemas["SubmitMessageResponse"];
+export type RequestStatus =
+  | Schemas["AcceptedRequestResponse"]
+  | (Omit<Schemas["CompletedRequestStatus"], "outcome"> & {
+      outcome: Pick<Reply, "user_message" | "assistant_message">;
+    })
+  | Schemas["FailedRequestStatus"];
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -35,9 +41,12 @@ function message(v: unknown): v is Message {
     (v.error_code === null || typeof v.error_code === "string")
   );
 }
-async function request(path: string, body?: object): Promise<unknown> {
+async function request(
+  path: string,
+  body?: object,
+): Promise<{ value: unknown; status: number }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), body ? 135_000 : 15_000);
+  const timer = setTimeout(() => controller.abort(), 15_000);
   try {
     const response = await fetch(`/api${path}`, {
       method: body ? "POST" : "GET",
@@ -75,7 +84,7 @@ async function request(path: string, body?: object): Promise<unknown> {
         );
       throw new ApiError("The server returned an unexpected error.");
     }
-    return value;
+    return { value, status: response.status };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (controller.signal.aborted)
@@ -96,8 +105,9 @@ const base = (dealer: string, conversation: string) =>
   `/dealerships/${dealer}/conversations/${conversation}/messages`;
 export const api = {
   async dealership(): Promise<Dealer> {
-    const v = await request("/dealerships");
-    if (!record(v) || !Array.isArray(v.items)) return malformed();
+    const { value: v, status } = await request("/dealerships");
+    if (status !== 200 || !record(v) || !Array.isArray(v.items))
+      return malformed();
     const dealer: unknown = v.items.find(
       (item: unknown) => record(item) && item.slug === "mia-motors",
     );
@@ -114,10 +124,15 @@ export const api = {
       return malformed();
     return { id: dealer.id, name: dealer.name, slug: dealer.slug };
   },
-  async create(dealer: string): Promise<string> {
-    const body: Schemas["CreateConversationRequest"] = {};
-    const v = await request(`/dealerships/${dealer}/conversations`, body);
-    if (!record(v) || !uuid(v.id)) return malformed();
+  async create(dealer: string, creationId: string): Promise<string> {
+    const body: Schemas["CreateConversationRequest"] = {
+      creation_id: creationId,
+    };
+    const { value: v, status } = await request(
+      `/dealerships/${dealer}/conversations`,
+      body,
+    );
+    if (status !== 201 || !record(v) || !uuid(v.id)) return malformed();
     return v.id;
   },
   async history(
@@ -125,10 +140,11 @@ export const api = {
     conversation: string,
     after: number,
   ): Promise<Pick<History, "items" | "next_after_sequence">> {
-    const v = await request(
+    const { value: v, status } = await request(
       `${base(dealer, conversation)}?after_sequence=${after}&limit=100`,
     );
     if (
+      status !== 200 ||
       !record(v) ||
       v.conversation_id !== conversation ||
       !Array.isArray(v.items) ||
@@ -158,30 +174,107 @@ export const api = {
     dealer: string,
     conversation: string,
     body: Submission,
-  ): Promise<Pick<Reply, "user_message" | "assistant_message">> {
-    const v = await request(base(dealer, conversation), body);
+  ): Promise<
+    | Schemas["AcceptedRequestResponse"]
+    | Pick<Reply, "user_message" | "assistant_message">
+  > {
+    const { value: v, status } = await request(
+      base(dealer, conversation),
+      body,
+    );
     if (
+      status === 202 &&
+      record(v) &&
+      v.conversation_id === conversation &&
+      v.request_id === body.request_id &&
+      v.status === "in_progress"
+    ) {
+      return {
+        conversation_id: conversation,
+        request_id: body.request_id,
+        status: "in_progress",
+      };
+    }
+    if (status !== 200) return malformed();
+    return reply(v, conversation, body);
+  },
+  async status(
+    dealer: string,
+    conversation: string,
+    body: Submission,
+  ): Promise<RequestStatus> {
+    const { value: v, status } = await request(
+      `/dealerships/${dealer}/conversations/${conversation}/requests/${body.request_id}`,
+    );
+    if (
+      status !== 200 ||
       !record(v) ||
       v.conversation_id !== conversation ||
-      v.request_id !== body.request_id ||
-      v.status !== "completed" ||
-      !message(v.user_message) ||
-      !message(v.assistant_message)
+      v.request_id !== body.request_id
     )
       return malformed();
-    const user = v.user_message,
-      assistant = v.assistant_message;
+    if (v.status === "in_progress" && v.outcome === undefined)
+      return {
+        conversation_id: conversation,
+        request_id: body.request_id,
+        status: "in_progress",
+      };
+    if (v.status === "completed") {
+      return {
+        conversation_id: conversation,
+        request_id: body.request_id,
+        status: "completed",
+        outcome: reply(v.outcome, conversation, body),
+      };
+    }
     if (
-      user.role !== "user" ||
-      assistant.role !== "assistant" ||
-      user.request_id !== body.request_id ||
-      assistant.request_id !== body.request_id ||
-      user.text !== body.text ||
-      user.request_status !== "completed" ||
-      assistant.request_status !== "completed" ||
-      assistant.sequence <= user.sequence
+      (v.status === "failed" || v.status === "interrupted") &&
+      record(v.outcome) &&
+      record(v.outcome.error) &&
+      typeof v.outcome.error.code === "string" &&
+      typeof v.outcome.error.message === "string"
     )
-      return malformed();
-    return { user_message: user, assistant_message: assistant };
+      return {
+        conversation_id: conversation,
+        request_id: body.request_id,
+        status: v.status,
+        outcome: {
+          error: {
+            code: v.outcome.error.code,
+            message: v.outcome.error.message,
+          },
+        },
+      };
+    return malformed();
   },
 };
+
+function reply(
+  v: unknown,
+  conversation: string,
+  body: Submission,
+): Pick<Reply, "user_message" | "assistant_message"> {
+  if (
+    !record(v) ||
+    v.conversation_id !== conversation ||
+    v.request_id !== body.request_id ||
+    v.status !== "completed" ||
+    !message(v.user_message) ||
+    !message(v.assistant_message)
+  )
+    return malformed();
+  const user = v.user_message,
+    assistant = v.assistant_message;
+  if (
+    user.role !== "user" ||
+    assistant.role !== "assistant" ||
+    user.request_id !== body.request_id ||
+    assistant.request_id !== body.request_id ||
+    user.text !== body.text ||
+    user.request_status !== "completed" ||
+    assistant.request_status !== "completed" ||
+    assistant.sequence <= user.sequence
+  )
+    return malformed();
+  return { user_message: user, assistant_message: assistant };
+}

@@ -4,8 +4,8 @@ import os
 import socket
 import subprocess
 import sys
-import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -59,7 +59,7 @@ def test_startup_recovers_active_request_and_replays_interruption(
             if item["slug"] == "mia-motors"
         )
         conversation_id = client.post(
-            f"/dealerships/{dealership_id}/conversations", json={}
+            f"/dealerships/{dealership_id}/conversations", json={"creation_id": str(uuid4())}
         ).json()["id"]
         internal_id = str(uuid4())
         message_id = str(uuid4())
@@ -147,7 +147,6 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
         stderr=subprocess.DEVNULL,
     )
     client = Client(base_url=f"http://127.0.0.1:{port}", timeout=2.0)
-    request_thread: threading.Thread | None = None
     try:
         deadline = time.monotonic() + 10
         while True:
@@ -166,7 +165,7 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
             if item["slug"] == "mia-motors"
         )
         conversation_id = client.post(
-            f"/dealerships/{dealership_id}/conversations", json={}
+            f"/dealerships/{dealership_id}/conversations", json={"creation_id": str(uuid4())}
         ).json()["id"]
         request_id = str(uuid4())
         prior_id = str(uuid4())
@@ -185,18 +184,11 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
         )
         assert prior_response.status_code == 200
 
-        def submit_blocked_request() -> None:
-            try:
-                client.post(
-                    f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
-                    json={"request_id": request_id, "text": "Wait for the crash"},
-                    timeout=30,
-                )
-            except Exception:
-                return
-
-        request_thread = threading.Thread(target=submit_blocked_request)
-        request_thread.start()
+        accepted = client.post(
+            f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
+            json={"request_id": request_id, "text": "Wait for the crash"},
+        )
+        assert accepted.status_code == 202
         deadline = time.monotonic() + 10
         while not marker_path.exists():
             if time.monotonic() >= deadline:
@@ -204,15 +196,11 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
             time.sleep(0.02)
         process.kill()
         process.wait(timeout=10)
-        request_thread.join(timeout=10)
-        assert not request_thread.is_alive()
     finally:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=10)
         client.close()
-        if request_thread is not None:
-            request_thread.join(timeout=10)
 
     monkeypatch.setenv("TEST_XAI_API_KEY", "test-only-key")
     settings = Settings(database_url=crash_database_url, config_file=config_path)
@@ -228,17 +216,21 @@ def test_abrupt_process_stop_after_admission_recovers_without_provider_rerun(
             protected = restarted.post(
                 url, json={"request_id": request_id, "text": "Wait for the crash"}
             )
-            assert protected.status_code == 409
-            assert protected.json()["error"]["code"] == "request_in_progress"
+            assert protected.status_code == 202
+            assert protected.json()["status"] == "in_progress"
             # Advance only the persisted request age; do not wait two minutes or
             # shorten the production recovery threshold in the application.
             with restarted_app.state.session_factory.begin() as session:
                 session.execute(
                     update(ChatRequest)
                     .where(ChatRequest.client_request_id == request_id)
-                    .values(updated_at="2000-01-01T00:00:00+00:00")
+                    .values(lease_expires_at=datetime(2000, 1, 1, tzinfo=UTC))
                 )
+        status = restarted.get(url.removesuffix("/messages") + "/requests/" + request_id)
+        assert status.status_code == 200
+        assert status.json()["status"] == "interrupted"
         replay = restarted.post(url, json={"request_id": request_id, "text": "Wait for the crash"})
+        assert status.json()["outcome"] == replay.json()
         assert replay.status_code == 409
         assert replay.json()["error"]["code"] == "request_interrupted"
         history = restarted.get(url).json()

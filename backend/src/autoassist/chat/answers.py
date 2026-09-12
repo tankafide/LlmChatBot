@@ -25,26 +25,45 @@ AllowedField = Literal[
 
 
 class AnswerVehicle(BaseModel):
+    """An evidenced vehicle and the inventory fields the customer requested."""
+
     model_config = ConfigDict(extra="forbid")
 
-    vehicle_id: str
-    fields: list[AllowedField] = Field(default_factory=list, max_length=9)
-
-
-class AnswerSelection(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    action: Literal["keep", "set", "clear"] = "keep"
-    vehicle_id: str | None = None
+    vehicle_id: str = Field(description="Copy the UUID from current inventory evidence.")
+    fields: list[AllowedField] = Field(
+        default_factory=list,
+        max_length=9,
+        description="Requested field names only; the application supplies their factual values.",
+    )
 
 
 class GroundedAnswer(BaseModel):
+    """Choose a grounded response. The application renders facts and owns vehicle selection."""
+
     model_config = ConfigDict(extra="forbid")
 
-    intent: Literal["list", "details", "clarify", "no_match", "safety", "unsupported"]
-    safety_evidence_ids: list[str] = Field(default_factory=list, max_length=2)
-    vehicles: list[AnswerVehicle] = Field(default_factory=list, max_length=10)
-    selection: AnswerSelection = Field(default_factory=AnswerSelection)
+    intent: Literal["list", "details", "clarify", "no_match", "safety", "unsupported"] = Field(
+        description=(
+            "list: nonempty latest search; details: one identified inventory vehicle; "
+            "clarify: missing/ambiguous vehicle, stock not found, or safety tool clarification; "
+            "no_match: latest filtered inventory search was empty (not a missing stock lookup); "
+            "safety: current safety evidence was returned; unsupported: outside supported scope "
+            "or a request to fabricate facts."
+        )
+    )
+    safety_evidence_ids: list[str] = Field(
+        default_factory=list,
+        max_length=2,
+        description=(
+            "For safety only, copy every current safety tool evidence_id, including unavailable "
+            "or empty results. A clarification has no evidence_id. Otherwise leave empty."
+        ),
+    )
+    vehicles: list[AnswerVehicle] = Field(
+        default_factory=list,
+        max_length=10,
+        description="For list/details only. All other intents require an empty list.",
+    )
 
 
 class InvalidAnswerError(ValueError):
@@ -53,6 +72,11 @@ class InvalidAnswerError(ValueError):
 
 def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedAnswer:
     if answer.intent == "safety":
+        if not deps.safety_run.results:
+            raise InvalidAnswerError(
+                "Safety needs evidence_id results. If the lookup returned clarification, "
+                "return clarify; otherwise call the requested safety tool."
+            )
         text = deps.request.text.casefold()
         required = set()
         if re.search(r"\brecalls?\b", text) or text.strip() == "both":
@@ -74,15 +98,15 @@ def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedA
             raise InvalidAnswerError(
                 "Safety references must be unique and contain no inventory fields."
             )
-        if answer.selection.action == "clear":
-            raise InvalidAnswerError("Safety answers must retain their vehicle selection.")
-        final_selected = (
-            answer.selection.vehicle_id
-            if answer.selection.action == "set"
-            else deps.request.selected_vehicle_id
+        resolved = resolve_safety_reference(
+            deps.request, deps.evidence, deps.safety_presentation is not None
         )
-        if final_selected != deps.safety_run.vehicle_id:
-            raise InvalidAnswerError("Select the resolved safety vehicle in this answer.")
+        if (
+            resolved is None
+            or resolved not in deps.evidence
+            or resolved != deps.safety_run.vehicle_id
+        ):
+            raise InvalidAnswerError("Safety evidence must match the requested inventory vehicle.")
     elif answer.safety_evidence_ids or deps.safety_run.results:
         raise InvalidAnswerError("Current safety evidence requires a safety answer.")
     vehicle_ids = [entry.vehicle_id for entry in answer.vehicles]
@@ -99,48 +123,41 @@ def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedA
             )
     elif answer.intent == "no_match":
         if not deps.search_executed or deps.last_search_ids:
-            raise InvalidAnswerError("No-match is valid only after an empty search.")
+            raise InvalidAnswerError(
+                "no_match requires an empty filtered search. A stock lookup with found=false "
+                "requires clarify, without a broad replacement search."
+            )
         if answer.vehicles:
             raise InvalidAnswerError("A no-match answer cannot contain vehicles.")
     elif answer.intent == "details" and len(answer.vehicles) != 1:
         raise InvalidAnswerError("Vehicle details require exactly one vehicle.")
     elif answer.intent in {"clarify", "unsupported"} and answer.vehicles:
         raise InvalidAnswerError("This intent cannot contain vehicle facts.")
-    if answer.selection.action == "set":
-        if answer.selection.vehicle_id is None or answer.selection.vehicle_id not in deps.evidence:
-            raise InvalidAnswerError("Selection must reference authoritative vehicle evidence.")
-        resolved = (
-            resolve_safety_reference(
-                deps.request, deps.evidence, deps.safety_presentation is not None
-            )
-            if answer.intent == "safety"
-            else resolve_reference(deps.request, deps.evidence)
-        )
-        if resolved != answer.selection.vehicle_id:
-            raise InvalidAnswerError(
-                "Selection must match a stock/list choice or selected context."
-            )
-        if answer.intent not in {"list", "details", "safety"}:
-            raise InvalidAnswerError("This answer cannot change the selected vehicle.")
-        if answer.intent == "list" and resolved == deps.request.selected_vehicle_id:
-            # A previous selection alone does not authorize selecting from a new search.
-            explicit = resolve_reference(deps.request, deps.evidence, allow_selected=False)
-            if explicit != resolved:
-                raise InvalidAnswerError(
-                    "A new list clears selection unless the user explicitly chooses a vehicle."
-                )
-    elif answer.selection.vehicle_id is not None:
-        raise InvalidAnswerError("Only a set selection may include a vehicle ID.")
     if answer.intent == "details":
         resolved = resolve_reference(deps.request, deps.evidence)
         if resolved != vehicle_ids[0]:
             raise InvalidAnswerError(
                 "Details must match the stock/list reference or selected vehicle."
             )
-        # Application reference resolution owns selection. A model's omitted,
-        # keep, or clear action must not discard the subject of valid details.
-        answer.selection = AnswerSelection(action="set", vehicle_id=resolved)
     return answer
+
+
+def selection_for(
+    answer: GroundedAnswer, deps: ChatDependencies
+) -> tuple[Literal["keep", "set", "clear"], str | None]:
+    """Derive the state update only after answer/evidence validation has succeeded."""
+    if answer.intent == "details":
+        return "set", answer.vehicles[0].vehicle_id
+    if answer.intent == "safety":
+        return "set", deps.safety_run.vehicle_id
+    if answer.intent == "list":
+        explicit = resolve_reference(deps.request, deps.evidence, allow_selected=False)
+        if explicit is not None and explicit in {item.vehicle_id for item in answer.vehicles}:
+            return "set", explicit
+        return "clear", None
+    if answer.intent == "no_match":
+        return "clear", None
+    return "keep", None
 
 
 def presentation_for(answer: GroundedAnswer) -> tuple[str, ...] | None:

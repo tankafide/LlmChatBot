@@ -15,6 +15,7 @@ COPY backend ./backend
 COPY frontend ./frontend
 COPY scripts ./scripts
 COPY config ./config
+COPY evaluations ./evaluations
 COPY README.md ./README.md
 RUN uv sync --project backend --frozen \
     && useradd --uid 10001 --create-home verifier \

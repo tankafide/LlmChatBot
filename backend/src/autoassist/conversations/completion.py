@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict, replace
 
 from autoassist.chat.contracts import ChatProviderError
-from autoassist.conversations.outcomes import TerminalOutcome
+from autoassist.conversations.outcomes import ConversationOutcome
 from autoassist.conversations.records import MessageRecord
 from autoassist.safety.records import PresentationUpdate
 
@@ -43,8 +43,8 @@ def completed_outcome(
     selected: str | None,
     user: MessageRecord,
     assistant: MessageRecord,
-) -> TerminalOutcome:
-    return TerminalOutcome(
+) -> ConversationOutcome:
+    return ConversationOutcome(
         200,
         {
             "conversation_id": conversation_id,

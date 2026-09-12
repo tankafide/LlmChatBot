@@ -93,7 +93,7 @@ Add abrupt-stop coverage to the existing/proposed conversation recovery harness:
 
 1. Start a child worker on isolated PostgreSQL storage, complete a baseline inventory and safety turn, and record committed identities/text/presentation.
 2. In a new request gate immediately after confirmed admission commit while external work is pending. Signal readiness to the parent via IPC or an atomic test marker. Force-kill the child (not graceful terminate on Linux), wait for its exit, and only then start another worker on the intact database.
-3. Startup must protect the fresh request. Advance its persisted age beyond 120 seconds, then submit its same ID to recover it as interrupted, retain its single user message, preserve baseline reply/selection/safety choices, and release the claim. Same ID returns stored 409 `request_interrupted`; zero automatic provider/NHTSA reruns. A new ID completes normally.
+3. Startup must protect the fresh request. Expire its persisted TIMESTAMPTZ lease using isolated test storage, then submit its same ID to recover it as interrupted, retain its single user message, preserve baseline reply/selection/safety choices, and release the claim. Same ID returns stored 409 `request_interrupted`; zero automatic provider/NHTSA reruns. A new ID completes normally.
 4. Repeat with a gate after confirmed completion commit but before response delivery. After forced death, the request remains completed and replays exactly. A pre-commit completion fault must instead leave no partial assistant/evidence.
 5. Restart again to prove recovery is repeatable. In `finally`, release gates, stop/join tasks/processes, close clients/engines, and remove only the owned temporary artifacts. A parent failure must not orphan a worker against the database.
 

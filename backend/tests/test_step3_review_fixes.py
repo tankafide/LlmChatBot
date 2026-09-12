@@ -9,7 +9,7 @@ from pydantic_ai.models.function import FunctionModel
 from test_nhtsa_client import discovery, vehicle
 from test_safety_matching import presentation
 
-from autoassist.chat.answers import AnswerSelection, GroundedAnswer
+from autoassist.chat.answers import GroundedAnswer, selection_for
 from autoassist.chat.context import ChatDependencies
 from autoassist.chat.contracts import ChatRunRequest
 from autoassist.chat.grounded import PydanticChatRunner
@@ -75,11 +75,11 @@ async def test_pending_choices_never_override_stock_or_use_inventory_ordinal(
             assert len(calls) == 1
             selected = first.id if expected_stock == first.source_id else second.id
             runner = PydanticChatRunner(FunctionModel(lambda *_: None), inventory)
-            runner._validate_answer(
+            answer = runner._validate_answer(
                 ctx,
                 GroundedAnswer(
                     intent="safety",
                     safety_evidence_ids=["crash"],
-                    selection=AnswerSelection(action="set", vehicle_id=selected),
                 ),
             )
+            assert selection_for(answer, deps) == ("set", selected)

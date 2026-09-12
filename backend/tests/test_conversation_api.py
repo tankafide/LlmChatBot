@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from conftest import write_config
 from fastapi.testclient import TestClient
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.contracts import ChatProviderError, ChatRunRequest, ChatRunResult
@@ -90,11 +91,16 @@ def test_turn_persists_and_terminal_retry_replays_after_restart(
             selection_action="set",
             selected_vehicle_id=vehicle_id,
         )
-        created = client.post(f"/dealerships/{dealership_id}/conversations", json={})
+        created = post_and_wait(
+            client,
+            f"/dealerships/{dealership_id}/conversations",
+            json={"creation_id": str(uuid4())},
+        )
         assert created.status_code == 201
         conversation_id = created.json()["id"]
 
-        response = client.post(
+        response = post_and_wait(
+            client,
             f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
             json={"request_id": request_id, "text": submitted_text},
         )
@@ -117,12 +123,19 @@ def test_turn_persists_and_terminal_retry_replays_after_restart(
 
     second_runner = FakeRunner()
     with TestClient(create_app(settings, runner_factory=factory_for(second_runner))) as client:
-        replay = client.post(
+        replay = post_and_wait(
+            client,
             f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
             json={"request_id": request_id, "text": submitted_text},
         )
         assert replay.status_code == 200
         assert replay.json() == original_body
+        status = client.get(
+            f"/dealerships/{dealership_id}/conversations/{conversation_id}/requests/{request_id}"
+        )
+        assert status.status_code == 200
+        assert status.json()["status"] == "completed"
+        assert status.json()["outcome"] == original_body
         assert second_runner.requests == []
 
         follow_up_id = str(uuid4())
@@ -130,7 +143,8 @@ def test_turn_persists_and_terminal_retry_replays_after_restart(
             reply="2023 Toyota Camry (stock MIA-001) — trim: SE",
             replay_json='{"messages_json":"[]"}',
         )
-        follow_up = client.post(
+        follow_up = post_and_wait(
+            client,
             f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
             json={"request_id": follow_up_id, "text": "What trim is the selected one?"},
         )
@@ -151,13 +165,15 @@ def test_provider_failure_is_visible_and_replayed_without_assistant_message(
     runner = FakeRunner(error=ChatProviderError("private provider detail"))
     with TestClient(create_app(settings, runner_factory=factory_for(runner))) as client:
         dealership_id = mia_dealership_id(client)
-        conversation_id = client.post(
-            f"/dealerships/{dealership_id}/conversations", json={}
+        conversation_id = post_and_wait(
+            client,
+            f"/dealerships/{dealership_id}/conversations",
+            json={"creation_id": str(uuid4())},
         ).json()["id"]
         request_id = str(uuid4())
         url = f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages"
-        first = client.post(url, json={"request_id": request_id, "text": "Find a truck"})
-        second = client.post(url, json={"request_id": request_id, "text": "Find a truck"})
+        first = post_and_wait(client, url, json={"request_id": request_id, "text": "Find a truck"})
+        second = post_and_wait(client, url, json={"request_id": request_id, "text": "Find a truck"})
 
         assert first.status_code == second.status_code == 502
         assert (
@@ -191,17 +207,21 @@ def test_invalid_unknown_and_cross_dealership_requests_append_nothing(
         dealerships = client.get("/dealerships").json()["items"]
         mia_id = next(item["id"] for item in dealerships if item["slug"] == "mia-motors")
         lakeview_id = next(item["id"] for item in dealerships if item["slug"] == "lakeview-auto")
-        conversation_id = client.post(f"/dealerships/{mia_id}/conversations", json={}).json()["id"]
+        conversation_id = post_and_wait(
+            client, f"/dealerships/{mia_id}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         request_id = str(uuid4())
         assert (
-            client.post(
+            post_and_wait(
+                client,
                 f"/dealerships/{mia_id}/conversations/{conversation_id}/messages",
                 json={"request_id": request_id, "text": "   "},
             ).status_code
             == 422
         )
         assert (
-            client.post(
+            post_and_wait(
+                client,
                 f"/dealerships/{lakeview_id}/conversations/{conversation_id}/messages",
                 json={"request_id": request_id, "text": "Find a car"},
             ).status_code
@@ -219,7 +239,11 @@ def test_missing_connection_blocks_new_chat_but_not_inventory(
 ) -> None:
     with TestClient(create_app(application_settings)) as client:
         dealership_id = mia_dealership_id(client)
-        response = client.post(f"/dealerships/{dealership_id}/conversations", json={})
+        response = post_and_wait(
+            client,
+            f"/dealerships/{dealership_id}/conversations",
+            json={"creation_id": str(uuid4())},
+        )
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "connection_unavailable"
         assert client.get("/dealerships").status_code == 200
@@ -246,10 +270,12 @@ def test_cross_dealership_selection_is_rejected_without_publishing_reply(
             selection_action="set",
             selected_vehicle_id=foreign_vehicle_id,
         )
-        conversation_id = client.post(f"/dealerships/{mia_id}/conversations", json={}).json()["id"]
+        conversation_id = post_and_wait(
+            client, f"/dealerships/{mia_id}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         url = f"/dealerships/{mia_id}/conversations/{conversation_id}/messages"
-        response = client.post(
-            url, json={"request_id": str(uuid4()), "text": "Select that vehicle"}
+        response = post_and_wait(
+            client, url, json={"request_id": str(uuid4()), "text": "Select that vehicle"}
         )
 
         assert response.status_code == 502
@@ -269,11 +295,15 @@ def test_old_conversation_does_not_reroute_after_connection_identity_changes(
     request_id = str(uuid4())
     with TestClient(create_app(settings, runner_factory=factory_for(first_runner))) as client:
         dealership_id = mia_dealership_id(client)
-        conversation_id = client.post(
-            f"/dealerships/{dealership_id}/conversations", json={}
+        conversation_id = post_and_wait(
+            client,
+            f"/dealerships/{dealership_id}/conversations",
+            json={"creation_id": str(uuid4())},
         ).json()["id"]
         url = f"/dealerships/{dealership_id}/conversations/{conversation_id}/messages"
-        completed = client.post(url, json={"request_id": request_id, "text": "Find a sedan"})
+        completed = post_and_wait(
+            client, url, json={"request_id": request_id, "text": "Find a sedan"}
+        )
         assert completed.status_code == 200
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -281,10 +311,10 @@ def test_old_conversation_does_not_reroute_after_connection_identity_changes(
     config_path.write_text(json.dumps(config), encoding="utf-8")
     second_runner = FakeRunner()
     with TestClient(create_app(settings, runner_factory=factory_for(second_runner))) as client:
-        replay = client.post(url, json={"request_id": request_id, "text": "Find a sedan"})
+        replay = post_and_wait(client, url, json={"request_id": request_id, "text": "Find a sedan"})
         assert replay.status_code == 200
-        unavailable = client.post(
-            url, json={"request_id": str(uuid4()), "text": "Now find a truck"}
+        unavailable = post_and_wait(
+            client, url, json={"request_id": str(uuid4()), "text": "Now find a truck"}
         )
         assert unavailable.status_code == 503
         assert unavailable.json()["error"]["code"] == "connection_unavailable"

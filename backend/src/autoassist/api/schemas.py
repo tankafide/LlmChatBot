@@ -110,6 +110,8 @@ def decimal_to_cents(value: Decimal | None) -> int | None:
 
 
 class CreateConversationRequest(BaseModel):
+    creation_id: UUID
+
     model_config = ConfigDict(extra="forbid")
 
 
@@ -159,3 +161,29 @@ class ConversationHistoryResponse(BaseModel):
     selected_vehicle_id: UUID | None
     items: list[ConversationMessageResponse]
     next_after_sequence: int | None
+
+
+class AcceptedRequestResponse(BaseModel):
+    conversation_id: UUID
+    request_id: UUID
+    status: Literal["in_progress"]
+
+
+class CompletedRequestStatus(BaseModel):
+    conversation_id: UUID
+    request_id: UUID
+    status: Literal["completed"]
+    outcome: SubmitMessageResponse
+
+
+class FailedRequestStatus(BaseModel):
+    conversation_id: UUID
+    request_id: UUID
+    status: Literal["failed", "interrupted"]
+    outcome: ErrorEnvelope
+
+
+RequestStatusResponse = Annotated[
+    AcceptedRequestResponse | CompletedRequestStatus | FailedRequestStatus,
+    Field(discriminator="status"),
+]

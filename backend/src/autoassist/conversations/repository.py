@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import insert, literal, select, update
+from sqlalchemy import func, insert, literal, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from autoassist.chat.contracts import ChatRunResult
 from autoassist.chat.history import retain_replay
@@ -27,6 +29,16 @@ class ConversationRepository:
 
     def get_dealership(self, session: Session, dealership_id: str) -> Dealership | None:
         return session.scalar(select(Dealership).where(Dealership.id == dealership_id))
+
+    def find_creation(
+        self, session: Session, dealership_id: str, creation_id: str
+    ) -> ConversationRecord | None:
+        row = session.scalar(
+            select(Conversation).where(
+                Conversation.dealership_id == dealership_id, Conversation.creation_id == creation_id
+            )
+        )
+        return None if row is None else self.conversation_record(row)
 
     def get_conversation(
         self, session: Session, dealership_id: str, conversation_id: str
@@ -209,9 +221,11 @@ class ConversationRepository:
         provider: str,
         model: str,
         created_at: str,
+        creation_id: str,
     ) -> ConversationRecord:
         conversation = Conversation(
             id=str(uuid4()),
+            creation_id=creation_id,
             dealership_id=dealership_id,
             connection_name=connection_name,
             provider=provider,
@@ -233,6 +247,7 @@ class ConversationRepository:
         internal_id: str,
         message_id: str,
         now: str,
+        lease_seconds: float,
     ) -> None:
         scoped_conversation = select(
             literal(internal_id),
@@ -242,6 +257,7 @@ class ConversationRepository:
             literal("in_progress"),
             literal(now),
             literal(now),
+            self.lease_deadline(session, lease_seconds),
         ).where(
             Conversation.id == conversation_id,
             Conversation.dealership_id == dealership_id,
@@ -256,6 +272,7 @@ class ConversationRepository:
                     ChatRequest.status,
                     ChatRequest.created_at,
                     ChatRequest.updated_at,
+                    ChatRequest.lease_expires_at,
                 ],
                 scoped_conversation,
             )
@@ -368,19 +385,64 @@ class ConversationRepository:
         request.terminal_http_status = http_status
         request.terminal_body = encoded_body
 
+    @staticmethod
+    def database_now(session: Session) -> ColumnElement[datetime]:
+        return (
+            func.clock_timestamp()
+            if session.get_bind().dialect.name == "postgresql"
+            else func.current_timestamp()
+        )
+
+    @classmethod
+    def lease_deadline(cls, session: Session, seconds: float) -> ColumnElement[datetime]:
+        if session.get_bind().dialect.name == "postgresql":
+            return cls.database_now(session) + timedelta(seconds=seconds)
+        return func.datetime("now", f"+{seconds} seconds")
+
+    def renew_lease(self, session: Session, internal_id: str, seconds: float) -> bool:
+        result = session.execute(
+            update(ChatRequest)
+            .where(
+                ChatRequest.id == internal_id,
+                ChatRequest.status == "in_progress",
+                ChatRequest.lease_expires_at > self.database_now(session),
+            )
+            .values(lease_expires_at=self.lease_deadline(session, seconds))
+        )
+        return result.rowcount == 1
+
     def recover_interrupted(
         self,
         session: Session,
         now: str,
-        stale_before: str,
         encoded_body: str,
         conversation_id: str | None = None,
+        batch_size: int = 100,
     ) -> int:
-        statement = (
-            update(ChatRequest)
+        cutoff = session.scalar(select(self.database_now(session)))
+        if cutoff is None:
+            raise RuntimeError("database clock is unavailable")
+        candidates = (
+            select(ChatRequest.id)
             .where(
                 ChatRequest.status == "in_progress",
-                ChatRequest.updated_at <= stale_before,
+                ChatRequest.lease_expires_at <= cutoff,
+            )
+            .order_by(ChatRequest.lease_expires_at, ChatRequest.id)
+            .limit(batch_size)
+            .with_for_update(skip_locked=True)
+        )
+        if conversation_id is not None:
+            candidates = candidates.where(ChatRequest.conversation_id == conversation_id)
+        ids = list(session.scalars(candidates))
+        if not ids:
+            return 0
+        result = session.execute(
+            update(ChatRequest)
+            .where(
+                ChatRequest.id.in_(ids),
+                ChatRequest.status == "in_progress",
+                ChatRequest.lease_expires_at <= self.database_now(session),
             )
             .values(
                 status="interrupted",
@@ -389,7 +451,4 @@ class ConversationRepository:
                 terminal_body=encoded_body,
             )
         )
-        if conversation_id is not None:
-            statement = statement.where(ChatRequest.conversation_id == conversation_id)
-        result = session.execute(statement)
         return result.rowcount

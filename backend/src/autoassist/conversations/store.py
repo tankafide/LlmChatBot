@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import threading
-from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from autoassist.chat.contracts import ChatProviderError, ChatRunResult
 from autoassist.conversations.completion import (
@@ -16,7 +15,7 @@ from autoassist.conversations.completion import (
 )
 from autoassist.conversations.outcomes import (
     ConversationApplicationError,
-    TerminalOutcome,
+    ConversationOutcome,
     canonical_json,
     error_body,
     terminal_outcome,
@@ -31,6 +30,7 @@ from autoassist.conversations.records import (
 )
 from autoassist.conversations.repository import ConversationNotFoundError, ConversationRepository
 from autoassist.db.database import SessionFactory
+from autoassist.observability import event
 
 
 class ConversationStore:
@@ -39,30 +39,39 @@ class ConversationStore:
         session_factory: SessionFactory,
         repository: ConversationRepository,
         *,
-        stale_request_seconds: float = 0.0,
+        lease_seconds: float = 0.0,
     ) -> None:
         self._session_factory = session_factory
         self._repository = repository
         self._write_lock = threading.Lock()
-        self._stale_request_seconds = stale_request_seconds
+        self._lease_seconds = lease_seconds
 
     def recover_interrupted(self, conversation_id: str | None = None) -> int:
         now = utc_now()
-        stale_before = (
-            datetime.now(UTC) - timedelta(seconds=self._stale_request_seconds)
-        ).isoformat(timespec="microseconds")
         body = canonical_json(
             error_body("request_interrupted", "The request was interrupted before completion.")
         )
         with self._session_factory.begin() as session:
-            return self._repository.recover_interrupted(
-                session, now, stale_before, body, conversation_id
-            )
+            count = self._repository.recover_interrupted(session, now, body, conversation_id)
+        event("stale_recovery", recovered_count=count)
+        return count
 
     def recover_stale(self, conversation_id: str) -> int:
-        if self._stale_request_seconds <= 0:
+        if self._lease_seconds <= 0:
             return 0
         return self.recover_interrupted(conversation_id)
+
+    def renew_lease(self, internal_id: str) -> bool:
+        with self._session_factory.begin() as session:
+            return self._repository.renew_lease(session, internal_id, self._lease_seconds)
+
+    @property
+    def leases_enabled(self) -> bool:
+        return self._lease_seconds > 0
+
+    def find_creation(self, dealership_id: str, creation_id: str) -> ConversationRecord | None:
+        with self._session_factory() as session:
+            return self._repository.find_creation(session, dealership_id, creation_id)
 
     def dealership_connection(self, dealership_id: str) -> str | None:
         with self._session_factory() as session:
@@ -75,16 +84,28 @@ class ConversationStore:
         connection_name: str,
         provider: str,
         model: str,
+        creation_id: str,
     ) -> ConversationRecord:
         with self._write_lock:
-            return self._create_unit_locked(dealership_id, connection_name, provider, model)
+            existing = self.find_creation(dealership_id, creation_id)
+            if existing is not None:
+                return existing
+            try:
+                return self._create_unit_locked(
+                    dealership_id, connection_name, provider, model, creation_id
+                )
+            except (IntegrityError, OperationalError):
+                existing = self.find_creation(dealership_id, creation_id)
+                if existing is not None:
+                    return existing
+                raise
 
     def _create_unit_locked(
-        self, dealership_id: str, connection_name: str, provider: str, model: str
+        self, dealership_id: str, connection_name: str, provider: str, model: str, creation_id: str
     ) -> ConversationRecord:
         with self._session_factory.begin() as session:
             record = self._repository.create_conversation(
-                session, dealership_id, connection_name, provider, model, utc_now()
+                session, dealership_id, connection_name, provider, model, utc_now(), creation_id
             )
         return record
 
@@ -143,6 +164,7 @@ class ConversationStore:
                     internal_id,
                     message_id,
                     now,
+                    self._lease_seconds,
                 )
             except ConversationNotFoundError as exc:
                 raise ConversationApplicationError(
@@ -179,13 +201,13 @@ class ConversationStore:
 
     def complete(
         self, dealership_id: str, internal_request_id: str, result: ChatRunResult
-    ) -> TerminalOutcome:
+    ) -> ConversationOutcome:
         with self._write_lock:
             return self._complete_unit_locked(dealership_id, internal_request_id, result)
 
     def _complete_unit_locked(
         self, dealership_id: str, internal_request_id: str, result: ChatRunResult
-    ) -> TerminalOutcome:
+    ) -> ConversationOutcome:
         now = utc_now()
         assistant_id = str(uuid4())
         with self._session_factory.begin() as session:
@@ -254,7 +276,7 @@ class ConversationStore:
         status_code: int,
         body: dict[str, object],
         request_status: str,
-    ) -> TerminalOutcome:
+    ) -> ConversationOutcome:
         with self._write_lock:
             return self._settle_failure_unit_locked(
                 internal_request_id, status_code, body, request_status
@@ -266,7 +288,7 @@ class ConversationStore:
         status_code: int,
         body: dict[str, object],
         request_status: str,
-    ) -> TerminalOutcome:
+    ) -> ConversationOutcome:
         with self._session_factory.begin() as session:
             request = self._repository.require_request(session, internal_request_id)
             if request.status != "in_progress":
@@ -274,4 +296,4 @@ class ConversationStore:
             self._repository.set_terminal(
                 request, request_status, utc_now(), status_code, canonical_json(body)
             )
-        return TerminalOutcome(status_code, dict(body))
+        return ConversationOutcome(status_code, dict(body))

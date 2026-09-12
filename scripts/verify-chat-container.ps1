@@ -27,6 +27,21 @@ function Wait-Healthy {
     throw "Disposable acceptance backend did not become healthy."
 }
 
+function Submit-Turn {
+    param([string]$JsonBody)
+    $accepted = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" -Body $JsonBody
+    if ($accepted.status -eq 'completed') { return $accepted }
+    $identity = ($JsonBody | ConvertFrom-Json).request_id
+    $statusUrl = $messagesUrl.Replace('/messages', "/requests/$identity")
+    for ($attempt = 0; $attempt -lt 70; $attempt++) {
+        $state = Invoke-RestMethod $statusUrl -TimeoutSec 15
+        if ($state.status -eq 'completed') { return $state.outcome }
+        if ($state.status -ne 'in_progress') { throw ($state.outcome.error | ConvertTo-Json) }
+        Start-Sleep -Seconds 1
+    }
+    throw "Request did not complete within the polling budget."
+}
+
 try {
     Invoke-Compose build backend
     Invoke-Compose run --rm --no-deps --volume "${inventoryPath}:/tmp/inventory.csv:ro" backend `
@@ -43,15 +58,14 @@ try {
 
     $conversation = Invoke-RestMethod -Method Post `
         "$baseUrl/dealerships/$dealershipId/conversations" `
-        -ContentType "application/json" -Body "{}"
+        -ContentType "application/json" -Body (@{ creation_id = [guid]::NewGuid().ToString() } | ConvertTo-Json)
     $conversationId = $conversation.id
     $messagesUrl = "$baseUrl/dealerships/$dealershipId/conversations/$conversationId/messages"
 
     $searchRequestId = [guid]::NewGuid().ToString()
     $searchBody = @{ request_id = $searchRequestId; text = "Show me two vehicles" } `
         | ConvertTo-Json -Compress
-    $search = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-        -Body $searchBody
+    $search = Submit-Turn $searchBody
     if ($search.assistant_message.text -notmatch "^1\.") {
         throw "Search did not return a numbered grounded result."
     }
@@ -60,14 +74,13 @@ try {
     $selectText = "Select the first one"
     $selectBody = @{ request_id = $selectRequestId; text = $selectText } `
         | ConvertTo-Json -Compress
-    $selection = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-        -Body $selectBody
+    $selection = Submit-Turn $selectBody
     if (-not $selection.selected_vehicle_id) {
         throw "Selection was not persisted."
     }
 
     $safetyBody = @{ request_id = [guid]::NewGuid().ToString(); text = "both" } | ConvertTo-Json -Compress
-    $safety = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" -Body $safetyBody
+    $safety = Submit-Turn $safetyBody
     if ($safety.assistant_message.text -notmatch "AA-1001" -or $safety.assistant_message.text -notmatch "NHTSA ID 202") {
         throw "Combined safety did not retain real imported vehicle and variant choices."
     }
@@ -75,18 +88,17 @@ try {
     Invoke-Compose up --detach --force-recreate backend
     Wait-Healthy
 
-    $replay = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-        -Body $selectBody
+    $replay = Submit-Turn $selectBody
     if ($replay.assistant_message.id -ne $selection.assistant_message.id) {
         throw "Terminal transport retry did not replay the stored response."
     }
 
-    $safetyReplay = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" -Body $safetyBody
+    $safetyReplay = Submit-Turn $safetyBody
     if ($safetyReplay.assistant_message.id -ne $safety.assistant_message.id) {
         throw "Safety replay did not preserve the committed reply."
     }
     $choiceBody = @{ request_id = [guid]::NewGuid().ToString(); text = "202" } | ConvertTo-Json -Compress
-    $choice = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" -Body $choiceBody
+    $choice = Submit-Turn $choiceBody
     if ($choice.assistant_message.text -notmatch "Overall: 5/5") {
         throw "Variant choice did not survive recreation."
     }
@@ -94,8 +106,7 @@ try {
         request_id = [guid]::NewGuid().ToString()
         text = "What is its price?"
     } | ConvertTo-Json -Compress
-    $details = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-        -Body $detailBody
+    $details = Submit-Turn $detailBody
     if ($details.selected_vehicle_id -ne $selection.selected_vehicle_id) {
         throw "Selected vehicle context did not survive container recreation."
     }

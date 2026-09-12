@@ -5,7 +5,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-import pytest
 from fastapi.testclient import TestClient
 from pydantic_ai.messages import (
     ModelRequest,
@@ -16,6 +15,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import FunctionModel
 from test_conversation_api import mia_dealership_id
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.grounded import PydanticChatRunner
@@ -24,9 +24,8 @@ from autoassist.inventory.importer import InventoryImportService, parse_inventor
 from autoassist.safety.service import SafetyService
 
 
-@pytest.mark.parametrize("selection", [{}, {"action": "keep"}, {"action": "clear"}])
 def test_numbered_details_retain_selection_for_restored_safety_followup(
-    application_settings, monkeypatch, selection
+    application_settings, monkeypatch
 ):
     monkeypatch.setenv("TEST_XAI_API_KEY", "synthetic")
     ids = []
@@ -72,7 +71,6 @@ def test_numbered_details_retain_selection_for_restored_safety_followup(
             answer = {
                 "intent": "details",
                 "vehicles": [{"vehicle_id": ids[2], "fields": ["mileage", "drivetrain", "price"]}],
-                "selection": selection,
             }
         else:
             seen_selected.append(context["selected_vehicle_id"])
@@ -102,16 +100,20 @@ def test_numbered_details_retain_selection_for_restored_safety_followup(
         InventoryImportService(first.state.session_factory).import_records(
             "mia-motors", parse_inventory_csv(Path("docs/context/inventory/data.csv"))
         )
-        conversation = client.post(f"/dealerships/{dealer}/conversations", json={}).json()["id"]
+        conversation = post_and_wait(
+            client, f"/dealerships/{dealer}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         endpoint = f"/dealerships/{dealer}/conversations/{conversation}/messages"
         assert (
-            client.post(
+            post_and_wait(
+                client,
                 endpoint,
                 json={"request_id": str(uuid4()), "text": "Show me Toyota SUVs under $35,000."},
             ).status_code
             == 200
         )
-        response = client.post(
+        response = post_and_wait(
+            client,
             endpoint,
             json={
                 "request_id": str(uuid4()),
@@ -137,13 +139,13 @@ def test_numbered_details_retain_selection_for_restored_safety_followup(
                 "request_id": str(uuid4()),
                 "text": "What recalls and crash-test ratings does it have?",
             }
-            response = client.post(endpoint, json=body)
+            response = post_and_wait(client, endpoint, json=body)
             assert response.status_code == 200, response.text
             reply = response.json()["assistant_message"]["text"]
             assert "No campaigns returned" in reply
             assert len(nhtsa_calls) == 2
             assert all(value == ids[2] for value in seen_selected)
-            assert client.post(endpoint, json=body).json() == response.json()
+            assert post_and_wait(client, endpoint, json=body).json() == response.json()
             assert len(nhtsa_calls) == 2
         finally:
             client.portal.call(transport.aclose)

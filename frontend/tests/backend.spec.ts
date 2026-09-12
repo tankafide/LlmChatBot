@@ -142,6 +142,9 @@ test("real API: imported inventory, safety, process restart and browser restorat
     await send("What is its price?", /price:/);
     await send("recalls", /recall/i);
     await send("both", /NHTSA ID 202/);
+    await expect(
+      page.locator('.fast-reveal[data-revealing="true"]'),
+    ).toHaveCount(0);
     const previous = await page.locator(".message").allTextContents();
     await stop();
     await start();

@@ -5,7 +5,7 @@ Build a clear, working prototype of an LLM-powered dealership chatbot exposed th
 - Search inventory in a relational database by a useful combination of make, model, year, price, and body type.
 - Answer follow-up questions about a specific vehicle using inventory data and conversation context.
 - Integrate NHTSA safety information: both recalls and crash-test ratings.
-- Persist every conversation and message in PostgreSQL; conversation state must survive server restarts. Database constraints and row locks coordinate workers; startup and scoped submissions recover only stale requests.
+- Persist every conversation and message in PostgreSQL; conversation state must survive server restarts. Database constraints and row locks coordinate workers; database-clock leases renew while a turn is owned; startup, scoped submissions, and bounded sweeps recover expired requests.
 - Include a README with setup/run instructions, configuration, API examples, design decisions, testing, and known omissions.
 
 Favor a small, complete system that is easy to explain and defend. The source inventory is stored at `docs/context/inventory/data.csv`; inspect and import that file rather than inventing project data.
@@ -20,6 +20,7 @@ Favor a small, complete system that is easy to explain and defend. The source in
 ## Docker Desktop workflow
 - Use Docker Desktop installed on this Windows machine with Docker Compose. The Docker context name `desktop-linux` is Docker Desktop's internal engine name, not a separate Docker or Linux installation requirement.
 - Start Docker Desktop through its supported CLI: `docker desktop start --detach --timeout 120`. Do not launch `Docker Desktop.exe` directly with `Start-Process` or assume a system-wide installation path.
+- Before starting, check `docker info`; reuse a healthy engine without restarting it. For the known `sailor-ingest.sock` / `engine.sock` stale-socket failure, follow the verified runtime-folder recovery in `C:/Users/shane/.codex/AGENTS.md`. The launch command alone does not fix stale sockets.
 - Confirm readiness with `docker info` before running Compose. If startup fails, inspect Docker Desktop logs and runtime state; do not factory-reset or delete images, volumes, or application data without explicit authorization.
 
 ## Implemented commands
@@ -27,6 +28,7 @@ Favor a small, complete system that is easy to explain and defend. The source in
 - Run locally: `uv run --project backend uvicorn autoassist.main:app --host 127.0.0.1 --port 8000 --workers 2`.
 - Import locally with the server stopped: `uv run --project backend autoassist-import-inventory --file docs/context/inventory/data.csv --dealership mia-motors --server-stopped`.
 - Run in Docker: `docker compose up --build -d backend frontend`, then open `http://localhost:5173`; stop without deleting data using `docker compose down`.
+- Optional model evaluation: `uv run --env-file .env --project backend autoassist-evaluate --live`; omit `--live` to validate the 20-case suite without provider calls.
 - Shared verification: `python scripts/verify.py` builds and runs the isolated Compose verifier for both backend and frontend.
 - Focused local verification: `uv run --project backend ruff check backend`, `uv run --project backend ruff format --check backend`, `uv run --project backend mypy backend/src`, and `uv run --project backend pytest backend/tests -q`.
 - Never run checks against the development database volume. Schema changes require explicit development database recreation; ordinary startup preserves it.

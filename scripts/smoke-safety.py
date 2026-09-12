@@ -86,7 +86,10 @@ def main() -> None:
             engine.dispose()
         if args.chat:
             with TestClient(create_app(settings)) as client:
-                response = client.post(f"/dealerships/{dealer}/conversations", json={})
+                response = client.post(
+                    f"/dealerships/{dealer}/conversations",
+                    json={"creation_id": str(uuid4())},
+                )
                 if response.status_code != 201:
                     print(
                         json.dumps(
@@ -107,9 +110,28 @@ def main() -> None:
                     "What are its recalls and crash ratings?",
                     "What is its price?",
                 ):
+                    identity = str(uuid4())
                     response = client.post(
-                        endpoint, json={"request_id": str(uuid4()), "text": text}
+                        endpoint, json={"request_id": identity, "text": text}
                     )
+                    if response.status_code == 202:
+                        deadline = time.monotonic() + 70
+                        while time.monotonic() < deadline:
+                            status = client.get(
+                                endpoint.removesuffix("/messages")
+                                + "/requests/"
+                                + identity
+                            )
+                            if status.status_code != 200:
+                                response = status
+                                break
+                            if status.json()["status"] != "in_progress":
+                                response = client.post(
+                                    endpoint,
+                                    json={"request_id": identity, "text": text},
+                                )
+                                break
+                            time.sleep(0.25)
                     body = response.json()
                     print(
                         json.dumps(

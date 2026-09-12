@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -11,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -72,6 +75,11 @@ class Conversation(Base):
     dealership_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("dealerships.id", ondelete="RESTRICT"), nullable=False
     )
+    creation_id: Mapped[str] = mapped_column(String(36), nullable=False, default=new_uuid)
+    __table_args__ = (
+        Index("uq_conversation_creation", "dealership_id", "creation_id", unique=True),
+    )
+
     connection_name: Mapped[str] = mapped_column(String(100), nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -106,6 +114,12 @@ class ChatRequest(Base):
             postgresql_where=text("status = 'in_progress'"),
         ),
         Index(
+            "ix_chat_request_expired",
+            "lease_expires_at",
+            postgresql_where=text("status = 'in_progress'"),
+            sqlite_where=text("status = 'in_progress'"),
+        ),
+        Index(
             "ix_chat_request_completed_turns",
             "conversation_id",
             "status",
@@ -122,6 +136,9 @@ class ChatRequest(Base):
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    lease_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     terminal_http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
     terminal_body: Mapped[str | None] = mapped_column(Text, nullable=True)

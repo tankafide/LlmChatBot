@@ -14,6 +14,7 @@ type Pending = Submission & { conversation: string };
 type State = {
   dealer?: Dealer;
   conversation?: string;
+  creationId?: string;
   messages: Message[];
   pending?: Pending;
   latestSubmittedRequestId?: string;
@@ -29,6 +30,7 @@ type State = {
 const initial = (): State => ({
   dealer: undefined,
   conversation: undefined,
+  creationId: undefined,
   pending: undefined,
   latestSubmittedRequestId: undefined,
   pendingState: "unconfirmed",
@@ -71,10 +73,14 @@ export function useConversation() {
   function persist() {
     const s = current.current;
     try {
-      if (s.conversation)
+      if (s.conversation || s.creationId)
         localStorage.setItem(
           key,
-          JSON.stringify({ conversation: s.conversation, pending: s.pending }),
+          JSON.stringify({
+            conversation: s.conversation,
+            pending: s.pending,
+            creationId: s.creationId,
+          }),
         );
       else localStorage.removeItem(key);
     } catch {
@@ -175,6 +181,8 @@ export function useConversation() {
       try {
         const raw = localStorage.getItem(key);
         const saved: unknown = raw ? JSON.parse(raw) : null;
+        if (record(saved) && uuid(saved.creationId))
+          update({ creationId: saved.creationId });
         if (record(saved) && uuid(saved.conversation)) {
           let pending: Pending | undefined;
           const p = saved.pending;
@@ -199,8 +207,19 @@ export function useConversation() {
       } catch {
         update({ storageWarning: true });
       }
-      if (current.current.conversation) await load(view, 0);
-      else update({ ready: true });
+      if (current.current.conversation) {
+        await load(view, 0);
+        const pending = current.current.pending;
+        if (
+          view === generation.current &&
+          current.current.ready &&
+          pending &&
+          current.current.messages.some(
+            (m) => m.request_id === pending.request_id && !terminal(m),
+          )
+        )
+          await post(pending, view, true);
+      } else update({ ready: true });
     } catch (error) {
       if (view === generation.current) fail(error);
     } finally {
@@ -217,14 +236,71 @@ export function useConversation() {
     // eslint does not enable exhaustive-deps: the controller reads its current ref.
   }, []);
 
-  async function post(pending: Pending, view: number) {
+  async function poll(pending: Pending, view: number) {
+    const dealer = current.current.dealer;
+    if (!dealer) return;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (view !== generation.current) return;
+      const result = await api.status(dealer.id, pending.conversation, pending);
+      if (view !== generation.current) return;
+      if (result.status === "completed") return result.outcome;
+      if (result.status !== "in_progress") {
+        const code = result.outcome.error.code;
+        outcomes.current.set(pending.request_id, {
+          status: result.status,
+          code,
+        });
+        update({
+          messages: current.current.messages.map((m) =>
+            m.request_id === pending.request_id
+              ? { ...m, request_status: result.status, error_code: code }
+              : m,
+          ),
+          pending: undefined,
+          notice:
+            result.status === "failed"
+              ? `${failureReason(code)} Your message is saved. Try again to prepare a new attempt.`
+              : "The reply was interrupted. Try again to prepare a new attempt.",
+        });
+        persist();
+        return;
+      }
+      if (attempt < 19)
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(500 * 2 ** attempt, 5000)),
+        );
+    }
+    update({
+      notice: "The reply is still unconfirmed. Use Check reply to check again.",
+    });
+  }
+
+  async function post(pending: Pending, view: number, accepted = false) {
     const dealer = current.current.dealer;
     if (!dealer) return;
     try {
-      const reply = await api.send(dealer.id, pending.conversation, {
-        request_id: pending.request_id,
-        text: pending.text,
-      });
+      const admission = accepted
+        ? undefined
+        : await api.send(dealer.id, pending.conversation, {
+            request_id: pending.request_id,
+            text: pending.text,
+          });
+      if (view !== generation.current) return;
+      let reply;
+      if (!admission || "status" in admission) {
+        update({
+          pendingState: "accepted",
+          notice: "Your message was accepted and is preparing a reply.",
+        });
+        const known = current.current.messages.find(
+          (m) => m.request_id === pending.request_id,
+        );
+        await load(view, known ? known.sequence - 1 : 0);
+        if (view !== generation.current) return;
+        if (current.current.ready && !current.current.pending) return;
+        reply = await poll(pending, view);
+        if (!reply) return;
+      } else reply = admission;
       if (view !== generation.current) return;
       update({
         messages: mergeMessages(current.current.messages, [
@@ -273,13 +349,7 @@ export function useConversation() {
             "Not accepted: the server is busy. Check reply to retry this same message later.",
         });
         return;
-      } else if (e.status === 409 && e.code === "request_in_progress")
-        update({
-          pendingState: "accepted",
-          notice:
-            "Your message was accepted and is still running. Check reply again later.",
-        });
-      else if (e.status === 409 && e.code === "request_id_conflict")
+      } else if (e.status === 409 && e.code === "request_id_conflict")
         update({
           notice:
             "Request identity conflict. Check reply to reconcile; a replacement will not be sent automatically.",
@@ -316,7 +386,11 @@ export function useConversation() {
     const view = generation.current;
     update({ busy: true, notice: "" });
     try {
-      const conversation = s.conversation ?? (await api.create(s.dealer.id));
+      const creationId = s.creationId ?? crypto.randomUUID();
+      update({ creationId });
+      persist();
+      const conversation =
+        s.conversation ?? (await api.create(s.dealer.id, creationId));
       if (view !== generation.current) return;
       update({ conversation });
       persist();
@@ -347,7 +421,14 @@ export function useConversation() {
       if (!s.ready && s.cursor !== null) await load(view, s.cursor);
       else if (s.pending) {
         update({ latestSubmittedRequestId: s.pending.request_id });
-        await post(s.pending, view);
+        await post(
+          s.pending,
+          view,
+          s.pendingState === "accepted" ||
+            s.messages.some(
+              (m) => m.request_id === s.pending?.request_id && !terminal(m),
+            ),
+        );
       } else if (s.conversation) await load(view, 0);
       else await initialize(view);
     } finally {

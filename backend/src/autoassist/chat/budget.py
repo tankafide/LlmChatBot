@@ -2,15 +2,17 @@
 
 import json
 import logging
+import time
 
 from pydantic import TypeAdapter
 from pydantic_ai.exceptions import ModelHTTPError
-from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse, ToolCallPart
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 
 from autoassist.chat.contracts import ChatProviderError, ChatProviderTimeoutError
+from autoassist.observability import current_turn, event
 
 MAX_PROVIDER_INPUT_BYTES = 128 * 1024
 PARAMETERS = TypeAdapter(ModelRequestParameters)
@@ -44,9 +46,24 @@ class BudgetedModel(WrapperModel):
         settings, parameters = self.prepare_request(model_settings, model_request_parameters)
         if len(request_bytes(messages, settings, parameters)) > MAX_PROVIDER_INPUT_BYTES:
             raise ChatProviderError("provider input exceeds limit")
+        started = time.monotonic()
+        outcome = "error"
+        metrics = current_turn.get()
+        if metrics is not None:
+            metrics.model_calls += 1
+            metrics.provider_attempts += 1
         try:
-            return await self.wrapped.request(messages, settings, parameters)
+            response = await self.wrapped.request(messages, settings, parameters)
+            count = sum(
+                isinstance(part, ToolCallPart) and part.tool_name != "final_result"
+                for part in response.parts
+            )
+            if metrics is not None:
+                metrics.tool_calls += count
+            outcome = "received"
+            return response
         except TimeoutError as exc:
+            outcome = "timeout"
             raise ChatProviderTimeoutError from exc
         except ChatProviderError:
             raise
@@ -61,3 +78,10 @@ class BudgetedModel(WrapperModel):
             if isinstance(exc, ModelHTTPError) and exc.status_code == 504:
                 raise ChatProviderTimeoutError from exc
             raise ChatProviderError from exc
+
+        finally:
+            event(
+                "provider_request",
+                outcome=outcome,
+                duration_ms=round((time.monotonic() - started) * 1000, 2),
+            )

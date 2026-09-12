@@ -13,6 +13,7 @@ from pydantic_ai.messages import ModelRequest, ToolCallPart, UserPromptPart
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
 from test_conversation_api import FakeRunner, mia_dealership_id
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.answers import GroundedAnswer
@@ -322,10 +323,12 @@ def test_generation_retry_does_not_repeat_inventory_tool_or_durable_turn(
             return original(*args)
 
         monkeypatch.setattr(inventory, "get_by_source_id", lookup)
-        conversation = client.post(f"/dealerships/{dealer}/conversations", json={}).json()["id"]
+        conversation = post_and_wait(
+            client, f"/dealerships/{dealer}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         endpoint = f"/dealerships/{dealer}/conversations/{conversation}/messages"
         body = {"request_id": str(uuid4()), "text": "Select stock AA-1001."}
-        response = client.post(endpoint, json=body)
+        response = post_and_wait(client, endpoint, json=body)
         assert response.status_code == (200 if recover else 502), response.text
         if recover:
             assert "$26,335.00" in response.json()["assistant_message"]["text"]
@@ -335,7 +338,7 @@ def test_generation_retry_does_not_repeat_inventory_tool_or_durable_turn(
         history = client.get(endpoint).json()
         assert len(history["items"]) == (2 if recover else 1)
         assert history["items"][0]["request_status"] == ("completed" if recover else "failed")
-        assert client.post(endpoint, json=body).json() == response.json()
+        assert post_and_wait(client, endpoint, json=body).json() == response.json()
         assert tools == 1
         assert calls == 4  # One tool-call generation, then at most three final-answer attempts.
 

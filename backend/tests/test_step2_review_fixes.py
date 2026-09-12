@@ -23,6 +23,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.tools import ToolDefinition
 from sqlalchemy.exc import OperationalError
+from turn_client import submit_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.answers import GroundedAnswer
@@ -32,7 +33,6 @@ from autoassist.chat.contracts import ChatProviderError, ChatRunRequest, ChatRun
 from autoassist.chat.grounded import PydanticChatRunner
 from autoassist.chat.history import MAX_HISTORY_BYTES
 from autoassist.config import Settings
-from autoassist.conversations.outcomes import ConversationApplicationError
 from autoassist.inventory.records import VehicleRecord
 
 
@@ -72,7 +72,7 @@ async def test_cancellation_drains_owned_write_before_releasing_capacity(
     service, monkeypatch, phase
 ):
     svc, dealer, runner = service
-    conversation = await svc.create(dealer)
+    conversation = await svc.create(dealer, str(uuid4()))
     name = "_admit_unit_locked" if phase == "admission" else "_complete_unit_locked"
     original = getattr(svc._store, name)
     entered, release = threading.Event(), threading.Event()
@@ -87,6 +87,9 @@ async def test_cancellation_drains_owned_write_before_releasing_capacity(
     task = asyncio.create_task(svc.submit(dealer, conversation.id, request_id, "hello"))
     try:
         assert await asyncio.to_thread(entered.wait, 5)
+        if phase == "completion":
+            assert (await task).status_code == 202
+            task = next(iter(svc._tasks.values()))
         task.cancel()
         # A loop barrier lets cancellation run without assuming a thread scheduling delay.
         await asyncio.sleep(0)
@@ -99,22 +102,26 @@ async def test_cancellation_drains_owned_write_before_releasing_capacity(
         await asyncio.wait_for(task, 5)
     monkeypatch.setattr(svc._store, name, original)
     if phase == "admission":
-        replay = await svc.submit(dealer, conversation.id, request_id, "hello")
+        replay = await submit_and_wait(svc, dealer, conversation.id, request_id, "hello")
         assert replay.status_code == 409
         assert replay.body["error"]["code"] == "request_interrupted"
         assert runner.calls == 0
     else:
-        assert (await svc.submit(dealer, conversation.id, request_id, "hello")).status_code == 200
+        assert (
+            await submit_and_wait(svc, dealer, conversation.id, request_id, "hello")
+        ).status_code == 200
         assert runner.calls == 1
     assert svc._limiter._active == 0
-    assert (await svc.submit(dealer, conversation.id, str(uuid4()), "next")).status_code == 200
+    assert (
+        await submit_and_wait(svc, dealer, conversation.id, str(uuid4()), "next")
+    ).status_code == 200
 
 
 async def test_uncertain_admission_commit_reconciles_without_duplicate_provider_run(
     service, monkeypatch
 ):
     svc, dealer, runner = service
-    conversation = await svc.create(dealer)
+    conversation = await svc.create(dealer, str(uuid4()))
     original = svc._store._admit_unit_locked
 
     def commit_then_error(*args):
@@ -125,8 +132,8 @@ async def test_uncertain_admission_commit_reconciles_without_duplicate_provider_
 
     monkeypatch.setattr(svc._store, "_admit_unit_locked", commit_then_error)
     request_id = str(uuid4())
-    first = await svc.submit(dealer, conversation.id, request_id, "hello")
-    replay = await svc.submit(dealer, conversation.id, request_id, "hello")
+    first = await submit_and_wait(svc, dealer, conversation.id, request_id, "hello")
+    replay = await submit_and_wait(svc, dealer, conversation.id, request_id, "hello")
     assert first == replay
     assert first.status_code == 200
     assert runner.calls == 1
@@ -135,7 +142,7 @@ async def test_uncertain_admission_commit_reconciles_without_duplicate_provider_
 
 async def test_cancelled_duplicate_does_not_interrupt_original_turn(service, monkeypatch):
     svc, dealer, runner = service
-    conversation = await svc.create(dealer)
+    conversation = await svc.create(dealer, str(uuid4()))
     request_id = str(uuid4())
     provider_entered, provider_release = asyncio.Event(), asyncio.Event()
     original_run = runner.run
@@ -170,12 +177,12 @@ async def test_cancelled_duplicate_does_not_interrupt_original_turn(service, mon
             release.set()
         with pytest.raises(asyncio.CancelledError):
             await duplicate
-        with pytest.raises(ConversationApplicationError) as error:
-            await svc.submit(dealer, conversation.id, request_id, "hello")
-        assert error.value.outcome.body["error"]["code"] == "request_in_progress"
+        active = await svc.submit(dealer, conversation.id, request_id, "hello")
+        assert active.status_code == 202
     finally:
         provider_release.set()
-        outcome = await owner
+        assert (await owner).status_code == 202
+        outcome = await submit_and_wait(svc, dealer, conversation.id, request_id, "hello")
     assert outcome.status_code == 200
     assert runner.calls == 1
 
@@ -185,11 +192,11 @@ async def test_cancelled_duplicate_does_not_interrupt_original_turn(service, mon
 )
 async def test_presentation_uses_same_byte_suffix_as_replay(service, new_size, expected):
     svc, dealer, runner = service
-    conversation = await svc.create(dealer)
+    conversation = await svc.create(dealer, str(uuid4()))
     runner.result = ChatRunResult(
         reply="1. C 2. A", replay_json="{}", presented_vehicle_ids=("C", "A")
     )
-    await svc.submit(dealer, conversation.id, str(uuid4()), "list")
+    await submit_and_wait(svc, dealer, conversation.id, str(uuid4()), "list")
     unit = {
         "messages_json": "[]",
         "public_reply": "detail",
@@ -201,7 +208,7 @@ async def test_presentation_uses_same_byte_suffix_as_replay(service, new_size, e
     runner.result = ChatRunResult(
         reply="detail", replay_json=json.dumps(unit, separators=(",", ":"))
     )
-    await svc.submit(dealer, conversation.id, str(uuid4()), "detail")
+    await submit_and_wait(svc, dealer, conversation.id, str(uuid4()), "detail")
     context = await asyncio.to_thread(svc._store.load_context, dealer, conversation.id)
     assert context.presented_vehicle_ids == expected
     assert sum(len(x.encode()) for x in context.replay_units) <= MAX_HISTORY_BYTES
@@ -257,7 +264,6 @@ def test_selection_and_details_follow_user_reference(text, selected, chosen, int
         {
             "intent": intent,
             "vehicles": [{"vehicle_id": chosen}],
-            "selection": {"action": "set", "vehicle_id": chosen},
         }
     )
     runner = PydanticChatRunner(model, None)
@@ -332,7 +338,6 @@ async def test_scripted_model_repairs_wrong_ordinal_before_returning_selection()
                     {
                         "intent": "details",
                         "vehicles": [{"vehicle_id": chosen, "fields": ["price"]}],
-                        "selection": {"action": "set", "vehicle_id": chosen},
                     },
                 )
             ]

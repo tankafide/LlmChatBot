@@ -39,7 +39,6 @@ class ScriptedSafety:
             answer = {
                 "intent": "details",
                 "vehicles": [{"vehicle_id": vehicle_id}],
-                "selection": {"action": "set", "vehicle_id": vehicle_id},
             }
         else:
             needed = (

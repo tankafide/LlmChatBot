@@ -90,5 +90,5 @@ Chromium automation and visual/keyboard inspection are not a complete screen-rea
 or cross-browser certification. Full transcript projection is retained in memory;
 each history action is bounded to ten pages, but very large histories are not
 virtualized. Multi-tab coordination, hosting and the controls excluded by the plan
-remain omitted. Failed browser storage limits reload recovery; creation response
-loss can leave an empty orphan. Step-four packaging/handoff remains separate.
+remain omitted. Failed browser storage limits reload recovery; the browser retains a creation ID across response
+loss and reload so retries return the same conversation. Step-four packaging/handoff remains separate.

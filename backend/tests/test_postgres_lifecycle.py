@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
+from uuid import uuid4
 
 import pytest
 from conftest import write_config
@@ -97,13 +99,10 @@ def test_postgres_completion_and_recovery_preserve_winning_transaction(
             self,
             session: Session,
             now: str,
-            stale_before: str,
             encoded_body: str,
             conversation_id: str | None = None,
         ) -> int:
-            count = super().recover_interrupted(
-                session, now, stale_before, encoded_body, conversation_id
-            )
+            count = super().recover_interrupted(session, now, encoded_body, conversation_id)
             locked.set()
             assert release.wait(10), "recovery lock was not released"
             return count
@@ -120,17 +119,17 @@ def test_postgres_completion_and_recovery_preserve_winning_transaction(
             hide_password=False
         )
     )
-    first = ConversationStore(factory, GatedRepository(), stale_request_seconds=120)
+    first = ConversationStore(factory, GatedRepository(), lease_seconds=120)
     second = ConversationStore(
-        make_session_factory(contender_engine), ConversationRepository(), stale_request_seconds=120
+        make_session_factory(contender_engine), ConversationRepository(), lease_seconds=120
     )
-    conversation = first.create(dealership_id, "test", "openai", "test-model")
+    conversation = first.create(dealership_id, "test", "openai", "test-model", str(uuid4()))
     request, _ = first.admit(dealership_id, conversation.id, "request", "Hello")
     with factory.begin() as session:
         session.execute(
             update(ChatRequest)
             .where(ChatRequest.id == request.id)
-            .values(updated_at="2000-01-01T00:00:00+00:00")
+            .values(lease_expires_at=datetime(2000, 1, 1, tzinfo=UTC))
         )
     result = ChatRunResult(reply="Saved reply", replay_json="[]")
     try:
@@ -144,7 +143,10 @@ def test_postgres_completion_and_recovery_preserve_winning_transaction(
                     recovered = executor.submit(first.recover_stale, conversation.id)
                     assert locked.wait(5)
                     completed = executor.submit(second.complete, dealership_id, request.id, result)
-                wait_for_database_lock(postgres_engine, name)
+                if winner == "recovery":
+                    wait_for_database_lock(postgres_engine, name)
+                else:
+                    assert recovered.result(timeout=5) == 0
             finally:
                 release.set()
             outcome = completed.result(timeout=10)

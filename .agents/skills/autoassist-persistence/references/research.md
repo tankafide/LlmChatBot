@@ -14,4 +14,4 @@ Researched 2026-09-10 (America/Chicago). Primary documentation consulted for ski
 
 The synchronous thread-unit model, admission/replay semantics, terminal status/body storage, cancellation reconciliation, interrupted-run recovery, inventory-import constraints, and no-migration policy are **project decisions** in [the shared baseline](../../../../docs/stack-baseline.md) and AGENTS.md. Upstream sources establish mechanisms and constraints; they do not prescribe this application lifecycle. The assignment inventory became available after these notes were authored and is now preserved at `docs/context/inventory/data.csv`. No application code, installed dependency compatibility, or runtime behavior was verified during skill authoring.
 
-SQLite-specific sources apply to isolated test fixtures. PostgreSQL coordination and age-based recovery follow the shared baseline and are verified against the isolated PostgreSQL service.
+SQLite-specific sources apply to isolated test fixtures. PostgreSQL coordination and database-clock lease recovery follow the shared baseline and are verified against the isolated PostgreSQL service.

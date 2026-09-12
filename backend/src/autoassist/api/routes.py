@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
 from autoassist.api.schemas import (
+    AcceptedRequestResponse,
     ConversationHistoryResponse,
     ConversationMessageResponse,
     ConversationResponse,
@@ -19,6 +20,7 @@ from autoassist.api.schemas import (
     HealthResponse,
     InventoryPageResponse,
     InventoryQuery,
+    RequestStatusResponse,
     SubmitMessageRequest,
     SubmitMessageResponse,
     VehicleDetailResponse,
@@ -181,7 +183,9 @@ async def create_conversation(
     request: Request, dealership_id: UUID, _payload: CreateConversationRequest
 ) -> ConversationResponse | JSONResponse:
     try:
-        record = await _conversation_service(request).create(str(dealership_id))
+        record = await _conversation_service(request).create(
+            str(dealership_id), str(_payload.creation_id)
+        )
     except ConversationApplicationError as exc:
         return JSONResponse(status_code=exc.outcome.status_code, content=exc.outcome.body)
     return ConversationResponse(
@@ -195,23 +199,42 @@ async def create_conversation(
 @router.post(
     "/dealerships/{dealership_id}/conversations/{conversation_id}/messages",
     response_model=SubmitMessageResponse,
-    responses=CHAT_ERROR_RESPONSES,
+    responses={**CHAT_ERROR_RESPONSES, 202: {"model": AcceptedRequestResponse}},
 )
 async def submit_message(
     request: Request,
     dealership_id: UUID,
     conversation_id: UUID,
     payload: SubmitMessageRequest,
-) -> SubmitMessageResponse | JSONResponse:
+) -> JSONResponse:
     try:
         outcome = await _conversation_service(request).submit(
             str(dealership_id), str(conversation_id), str(payload.request_id), payload.text
         )
     except ConversationApplicationError as exc:
         outcome = exc.outcome
-    if outcome.status_code != 200:
-        return JSONResponse(status_code=outcome.status_code, content=outcome.body)
-    return SubmitMessageResponse.model_validate(outcome.body)
+    return JSONResponse(status_code=outcome.status_code, content=outcome.body)
+
+
+@router.get(
+    "/dealerships/{dealership_id}/conversations/{conversation_id}/requests/{request_id}",
+    response_model=RequestStatusResponse,
+    responses={404: CHAT_ERROR_RESPONSES[404], 503: CHAT_ERROR_RESPONSES[503]},
+)
+async def get_request_status(
+    request: Request, dealership_id: UUID, conversation_id: UUID, request_id: UUID
+) -> JSONResponse:
+    try:
+        outcome = await _conversation_service(request).status(
+            str(dealership_id), str(conversation_id), str(request_id)
+        )
+    except ConversationApplicationError as exc:
+        outcome = exc.outcome
+    return JSONResponse(
+        status_code=outcome.status_code,
+        content=outcome.body,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get(

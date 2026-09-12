@@ -14,6 +14,7 @@ from pydantic_ai.settings import ModelSettings
 
 from autoassist.chat.grounded import PydanticChatRunner
 from autoassist.inventory.service import InventoryService
+from autoassist.observability import current_turn
 
 
 class GeminiModel(GoogleModel):
@@ -26,6 +27,9 @@ class GeminiModel(GoogleModel):
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
         for attempt in range(1, 4):
+            metrics = current_turn.get()
+            if attempt > 1 and metrics is not None:
+                metrics.provider_attempts += 1
             try:
                 return await super().request(messages, model_settings, model_request_parameters)
             except ModelHTTPError as exc:

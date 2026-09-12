@@ -78,24 +78,26 @@ of one intentional attempt, not merely a tracing value.
 
 1. The conversation service validates dealership and conversation scope.
 2. A short transaction atomically inserts the request and user message and claims the conversation.
-3. The transaction and session close before the backend waits on the model or NHTSA.
+3. After that commit, a service-owned task takes execution ownership and POST returns `202 Accepted`.
+   The transaction and session close before the backend waits on the model or NHTSA.
 4. The model can call typed tools, but those tools receive the trusted dealership scope from the
    application. They cannot submit SQL or replace that scope.
 5. The application validates the model's structured answer against evidence returned in this turn.
 6. A deterministic renderer—not the model—writes inventory prices, specifications, recall facts,
    ratings, source links, and limitations into the public reply.
 7. One completion transaction stores the assistant message, complete model/tool replay unit,
-   selected vehicle, displayed choices, and exact terminal response before HTTP `200` is returned.
+   selected vehicle, displayed choices, and exact terminal response. Status reads then expose that outcome.
 
 This produces useful failure semantics:
 
 | Situation | Observable result |
 | --- | --- |
+| Same ID and text while active | `202` with the existing request identity; no second provider run. |
 | Same ID and text after completion | The exact stored status/body is replayed; the provider and NHTSA are not called again. |
 | Same ID with different text | `409 request_id_conflict`; no message is appended. |
 | Another request while the conversation is active | `409 conversation_busy`; the rejected request is not persisted as chat history. |
 | Provider failure or timeout after admission | The user message remains, a sanitized terminal failure is stored, and no fictional assistant message is created. |
-| Worker stops after admission but before completion | Other workers leave the fresh request alone. Once its 120-second age threshold expires, startup or the next submission marks it interrupted and releases the claim; external work is never silently rerun. |
+| Worker stops after admission but before completion | Other workers leave the fresh request alone. After its renewable database lease expires, startup, a scoped submission/status read, or the background sweep marks it interrupted and releases the claim; external work is never silently rerun. |
 | Completion committed but the response was lost | Retrying the same ID returns the stored success without duplicating messages. |
 
 PostgreSQL is the source of truth for the transcript and model replay context. Failed and interrupted
@@ -107,14 +109,19 @@ tool call is never separated from its result.
 
 The LLM is useful for interpreting language and choosing tools, but it is not treated as a database.
 Inventory tools accept typed filters and execute parameterized, dealership-scoped SQL. The model's
-final structure contains intent, evidence IDs, requested fields, and selection actions—not arbitrary
-prices or safety values.
+final structure contains intent, evidence IDs and requested fields. The application supplies
+prices and safety values and derives selection from the validated answer and user reference.
 
 The application then checks that every referenced vehicle or safety result came from current tool
 evidence. Lists may use only the final search result set. Exact stock numbers and displayed ordinals
-are resolved by application code. A successful detail response also retains that vehicle as the
+are resolved by application code. A successful detail or safety response retains its resolved vehicle as the
 conversation selection, allowing a later question such as “What are its recalls?” to work after a
 restart.
+
+The prompt includes refreshed current vehicle evidence for selected/list follow-ups, avoiding
+extra model-directed stock lookups. Tool descriptions and output schemas specify prerequisites
+and stopping conditions: a missing stock or unresolved safety subject asks for clarification;
+`no_match` requires an empty filtered search. Model-authored selection state is not accepted.
 
 This split keeps the probabilistic part narrow: the model can misunderstand a request and ask for
 clarification, but it cannot make an invented price valid by putting it in fluent prose.
@@ -226,40 +233,43 @@ $vehicleId = $vehicles.items[0].id
 Invoke-RestMethod "http://localhost:8000/dealerships/$dealershipId/vehicles/$vehicleId"
 ```
 
-Create a conversation:
+Create a conversation. Retain the creation ID for retries after a lost response:
 
 ```powershell
+$creationId = [guid]::NewGuid().ToString()
 $conversation = Invoke-RestMethod -Method Post `
   "http://localhost:8000/dealerships/$dealershipId/conversations" `
-  -ContentType "application/json" -Body (@{} | ConvertTo-Json)
+  -ContentType "application/json" -Body (@{ creation_id = $creationId } | ConvertTo-Json)
 $conversationId = $conversation.id
 $messagesUrl = "http://localhost:8000/dealerships/$dealershipId/conversations/$conversationId/messages"
 ```
 
-Submit a natural-language inventory search. Keep the ID and exact text: they are the transport-retry
-identity for this attempt.
+Submit a natural-language inventory search. Keep the ID and exact text for uncertain admission
+recovery. POST returns `202` after the user message is committed; poll the request resource:
 
 ```powershell
 $searchId = [guid]::NewGuid().ToString()
 $searchText = "Show me Toyota RAV4 SUVs from 2022 under 30000 dollars"
 $searchBody = @{ request_id = $searchId; text = $searchText } | ConvertTo-Json
-$searchReply = Invoke-RestMethod -Method Post $messagesUrl `
+$accepted = Invoke-RestMethod -Method Post $messagesUrl `
   -ContentType "application/json" -Body $searchBody
-$searchReply.assistant_message.text
+$statusUrl = $messagesUrl.Replace('/messages', "/requests/$searchId")
+for ($attempt = 0; $attempt -lt 20; $attempt++) {
+  $state = Invoke-RestMethod $statusUrl -TimeoutSec 15
+  if ($state.status -ne 'in_progress') { break }
+  Start-Sleep -Seconds 5
+}
+if ($state.status -eq 'completed') { $state.outcome.assistant_message.text }
+elseif ($state.status -eq 'in_progress') { 'Still running: check the same status URL later.' }
+else { $state.outcome.error }
 ```
 
-Use a new ID for each intentional follow-up:
-
-```powershell
-$selectReply = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-  -Body (@{ request_id = [guid]::NewGuid().ToString(); text = "Select stock AA-1001" } | ConvertTo-Json)
-
-$detailReply = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-  -Body (@{ request_id = [guid]::NewGuid().ToString(); text = "What are its mileage and drivetrain?" } | ConvertTo-Json)
-
-$safetyReply = Invoke-RestMethod -Method Post $messagesUrl -ContentType "application/json" `
-  -Body (@{ request_id = [guid]::NewGuid().ToString(); text = "What recalls and crash-test ratings does it have?" } | ConvertTo-Json)
-```
+Use a fresh request ID for each intentional follow-up, such as `Select stock AA-1001`,
+`What are its mileage and drivetrain?`, or `What recalls and crash-test ratings does it have?`.
+Wait for the current request to reach terminal status before submitting the next one.
+Status GET returns `200` for all known states. A terminal failure has `status: "failed"` and
+`outcome: { "error": { "code": "provider_timeout", "message": "The chat provider timed out." } }`,
+for example. Reposting that exact ID/text returns the stored `504` error without rerunning it.
 
 Read durable history in pages:
 
@@ -268,8 +278,9 @@ $history = Invoke-RestMethod "$messagesUrl`?after_sequence=0&limit=50"
 $history.items | Select-Object sequence, role, text, request_status, error_code
 ```
 
-Retry the original search after a lost response by sending the same ID and exact text. The API
-returns the stored terminal body and performs no new model or NHTSA work:
+If admission is uncertain after a lost response, submit the same ID and exact text. An active
+request returns `202`; a terminal request returns its stored HTTP status/body without repeating
+model or NHTSA work. If admission never committed, this submits the request:
 
 ```powershell
 $replayed = Invoke-RestMethod -Method Post $messagesUrl `
@@ -288,9 +299,32 @@ PostgreSQL.
 | `GET /dealerships` | Discover stable dealership IDs | `200`, `503` |
 | `GET /dealerships/{id}/vehicles` | Combined filtered inventory search | `200`, `404`, `422`, `503` |
 | `GET /dealerships/{id}/vehicles/{vehicle_id}` | Scoped vehicle details | `200`, `404`, `422`, `503` |
-| `POST /dealerships/{id}/conversations` | Create and pin a connection identity | `201`, `404`, `503` |
-| `POST /dealerships/{id}/conversations/{id}/messages` | Submit or replay one request | `200`, `404`, `409`, `422`, `500`, `502`, `503`, `504` |
+| `POST /dealerships/{id}/conversations` | Create or replay by dealership-scoped `creation_id` | `201`, `404`, `422`, `503` |
+| `POST /dealerships/{id}/conversations/{id}/messages` | Admit or replay one request | `202`, `200`, `404`, `409`, `422`, `500`, `502`, `503`, `504` |
+| `GET /dealerships/{id}/conversations/{id}/requests/{request_id}` | Read durable active or terminal status | `200`, `404`, `422`, `503` |
 | `GET /dealerships/{id}/conversations/{id}/messages` | Page authoritative public history | `200`, `404`, `422`, `503` |
+
+### Request status and recovery
+
+Every status response includes `conversation_id`, `request_id`, and `status`. Status responses
+use `Cache-Control: no-store` and are scoped to the dealership and conversation.
+
+| Status | GET HTTP status | Contents |
+| --- | --- | --- |
+| `in_progress` | `200` | Identity and status, with no `outcome`. |
+| `completed` | `200` | `outcome` contains the committed submission response, including both messages and selected vehicle ID. |
+| `failed` | `200` | `outcome.error` contains the stored sanitized code and message. |
+| `interrupted` | `200` | `outcome.error` describes interruption; the admitted user message remains in history. |
+
+Inspect the body to distinguish turn success from failure. Unknown or incorrectly scoped resources
+return `404`, unavailable storage returns `503`, and invalid path values return `422`. Status reads
+recover expired leases within the requested scope without invoking the provider.
+
+After confirmed admission, check the result with GET. If a status response is lost, check the same
+resource again. Reusing an ID with different text returns `409 request_id_conflict`; submitting a
+different request while the conversation is active returns `409 conversation_busy`. Use a fresh
+request ID for an intentional turn after completion, failure, or interruption. **Check reply** retains
+the original identity while the result remains unresolved.
 
 ## Configuration
 
@@ -346,6 +380,33 @@ availability can change:
 docker compose -f compose.safety-live.yaml run --build --rm safety-live
 ```
 
+## Model evaluation and operational events
+
+The [evaluation guide](evaluations/README.md) describes the 20 labeled conversations,
+automatic checks, human-review rubric, and report limits. The [interface improvement results](evaluations/interface-results.md)
+record repeated live runs with the same model and unchanged labels. Validate without provider calls,
+or opt in to a billed run against temporary CSV inventory and controlled NHTSA fixtures:
+
+```powershell
+uv run --project backend autoassist-evaluate
+uv run --env-file .env --project backend autoassist-evaluate --live
+```
+
+Reports in `evaluation-results/report.json` include tool/filter accuracy, selection and
+safety outcomes, latency, and model-call counts. Strict tool choice flags unnecessary calls
+separately from functional checks; pending human reviews never count as passed. Bounded validation
+feedback in local reports helps explain output failures without changing operational log privacy.
+
+`autoassist.events` emits JSON to stderr at INFO level: admission, model request duration,
+NHTSA operation duration/category, execution duration and terminal HTTP outcome,
+model/proposed-tool counts, lease renewals, and recovery counts. Conversation and request
+IDs correlate events. No prompts, secrets, vehicle records, exception messages, or provider
+payloads are logged. Replay makes zero model calls and emits no execution event. Execution duration starts after
+admission and includes context loading, provider work, persistence, and cleanup;
+model duration includes integration retries. Use `docker compose logs backend` to inspect events.
+No metrics collector or tracing server is required. Local evaluation reports intentionally
+retain labeled inputs and outputs for review, separately from production logs.
+
 ## Database recreation after schema changes
 
 This prototype deliberately has no migration framework. Ordinary startup creates missing tables
@@ -369,13 +430,17 @@ remove only that volume. Start `database`, then reimport the source CSV. Normal
   or a safety guarantee. Inventory does not contain VINs or comparison weight.
 - NHTSA data may be partial, unrated, stale, unavailable, or ambiguous. There is no background
   refresh, cross-turn safety cache, bulk scan, or nearest-year guessing.
-- Conversation creation itself is not idempotent. Message submission is idempotent by request ID.
-- Interrupted model work is not automatically resumed. Fresh work has a 120-second protection
-  window; stale work is marked interrupted on startup or the next submission. The admitted user
-  message is retained and a deliberate new attempt needs a new request ID. This is an age-based
-  recovery policy, not worker-liveness detection or a renewable lease. Hosts sharing the database
-  need synchronized clocks; a stalled live request can exceed the threshold, and its late
-  completion cannot overwrite an already settled outcome.
+- Creation retries reuse a client-generated `creation_id`, unique within the dealership. The
+  original conversation and pinned connection are returned even if provider credentials change.
+  Browser storage retains unconfirmed creation IDs across reloads; unavailable browser storage
+  limits recovery to the current page session.
+- Interrupted model work is not automatically resumed. PostgreSQL TIMESTAMPTZ leases use
+  `clock_timestamp()`: admission grants 120 seconds and the owning turn renews every 20 seconds.
+  Each worker sweeps at most 100 expired requests every 30 seconds with `FOR UPDATE SKIP LOCKED`;
+  startup and scoped submissions also recover expired work. Backlogs and locked rows can delay
+  recovery. Renewal cannot revive expired/terminal work. Expiry makes work eligible for recovery,
+  not automatic provider cancellation; completion can win before recovery locks the row.
+  Database partitions can prevent renewal. A deliberate new attempt needs a new request ID.
 - Uncommitted provider output can be lost. Exactly-once external execution is not promised; durable
   terminal replay prevents completed application requests from being repeated.
 - The UI is a localhost demonstration: no authentication, streaming, attachments, voice,
@@ -402,3 +467,20 @@ control.
 AI-assisted development was used throughout the project. The resulting behavior is documented and
 tested at the system boundaries rather than relying on generated-code volume as evidence of
 correctness.
+
+### Async request ownership and browser recovery
+
+Accepted work belongs to the conversation service, not the POST coroutine. Tracked tasks hold
+one of four execution slots per worker, renew database leases, and settle completion/failure with
+the existing atomic writes. Shutdown stops admission, drains for 20 seconds, then cancels and
+joins remaining work before closing provider clients. Database writes already running in threads
+finish before cancellation settlement; a committed completion wins. Process death still requires
+lease expiry and recovery, with no automatic provider rerun. This is not a durable job queue.
+
+The browser restores server history and polls a confirmed active request after reload. It makes
+at most 20 status reads per polling cycle, backing off from 0.5 to 5 seconds, with a 15-second
+HTTP timeout. A failed read or exhausted cycle leaves Check reply available. Confirmed requests
+use status reads; uncertain/unaccepted submissions retry POST with the exact original ID/text.
+Terminal messages merge by stable ID, stale view results are ignored, and no assistant message or
+provider/tool progress is fabricated. Status reads load one scoped request, not its transcript,
+and disable caching. This API change needs no database recreation.

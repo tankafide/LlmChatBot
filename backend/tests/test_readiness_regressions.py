@@ -12,6 +12,7 @@ from pydantic_ai.models.function import FunctionModel
 from sqlalchemy import event, update
 from sqlalchemy.exc import OperationalError
 from test_conversation_api import FakeRunner, factory_for, mia_dealership_id
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.contracts import ChatRunResult
@@ -100,7 +101,9 @@ def test_real_agent_tool_errors_are_classified_settled_and_replayed(
     app = create_app(application_settings, runner_factory=factory)
     with TestClient(app) as client:
         dealer = mia_dealership_id(client)
-        conversation = client.post(f"/dealerships/{dealer}/conversations", json={}).json()["id"]
+        conversation = post_and_wait(
+            client, f"/dealerships/{dealer}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         endpoint = f"/dealerships/{dealer}/conversations/{conversation}/messages"
 
         def fault(*args: object) -> None:
@@ -122,7 +125,7 @@ def test_real_agent_tool_errors_are_classified_settled_and_replayed(
         event.listen(app.state.engine, "before_cursor_execute", fault)
         try:
             body = {"request_id": str(uuid4()), "text": "can you give me an example?"}
-            response = client.post(endpoint, json=body)
+            response = post_and_wait(client, endpoint, json=body)
             assert response.status_code == expected_status, response.text
             assert response.json()["error"]["code"] == expected_code
             assert "secret" not in response.text
@@ -131,16 +134,16 @@ def test_real_agent_tool_errors_are_classified_settled_and_replayed(
             assert history[0]["role"] == "user"
             assert history[0]["request_status"] == "failed"
             assert history[0]["error_code"] == expected_code
-            assert client.post(endpoint, json=body).json() == response.json()
+            assert post_and_wait(client, endpoint, json=body).json() == response.json()
             assert calls == 1
             # The claim was released; a deliberate new attempt is admitted.
-            second = client.post(endpoint, json={**body, "request_id": str(uuid4())})
+            second = post_and_wait(client, endpoint, json={**body, "request_id": str(uuid4())})
             assert second.status_code == expected_status
             assert calls == 2
         finally:
             event.remove(app.state.engine, "before_cursor_execute", fault)
     with TestClient(create_app(application_settings, runner_factory=factory)) as restarted:
-        replay = restarted.post(endpoint, json=body)
+        replay = post_and_wait(restarted, endpoint, json=body)
         assert replay.status_code == expected_status
         assert replay.json() == response.json()
         assert calls == 2
@@ -179,10 +182,14 @@ def test_corrupt_persisted_model_history_is_internal_error_without_calling_provi
     app = create_app(application_settings, runner_factory=factory_for(first))
     with TestClient(app) as client:
         dealer = mia_dealership_id(client)
-        conversation = client.post(f"/dealerships/{dealer}/conversations", json={}).json()["id"]
+        conversation = post_and_wait(
+            client, f"/dealerships/{dealer}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         endpoint = f"/dealerships/{dealer}/conversations/{conversation}/messages"
         assert (
-            client.post(endpoint, json={"request_id": str(uuid4()), "text": "first"}).status_code
+            post_and_wait(
+                client, endpoint, json={"request_id": str(uuid4()), "text": "first"}
+            ).status_code
             == 200
         )
         with app.state.session_factory.begin() as session:
@@ -200,9 +207,9 @@ def test_corrupt_persisted_model_history_is_internal_error_without_calling_provi
 
     with TestClient(create_app(application_settings, runner_factory=factory)) as client:
         body = {"request_id": str(uuid4()), "text": "next"}
-        response = client.post(endpoint, json=body)
+        response = post_and_wait(client, endpoint, json=body)
         assert response.status_code == 500
         assert response.json()["error"]["code"] == "internal_error"
         assert calls == 0
         assert client.get(endpoint).json()["items"][-1]["request_status"] == "failed"
-        assert client.post(endpoint, json=body).json() == response.json()
+        assert post_and_wait(client, endpoint, json=body).json() == response.json()

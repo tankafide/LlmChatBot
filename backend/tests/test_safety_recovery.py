@@ -16,6 +16,7 @@ from pydantic_ai.models.function import FunctionModel
 from safety_scripted_model import ScriptedSafety
 from test_conversation_api import add_vehicle, mia_dealership_id
 from test_conversation_recovery import NoCallRunner
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.grounded import PydanticChatRunner
@@ -38,11 +39,13 @@ def test_abrupt_nhtsa_wait_preserves_previous_safety_and_choices(
     with TestClient(app) as client:
         dealer = mia_dealership_id(client)
         selected_id = add_vehicle(app, dealer)
-        conversation = client.post(f"/dealerships/{dealer}/conversations", json={}).json()["id"]
+        conversation = post_and_wait(
+            client, f"/dealerships/{dealer}/conversations", json={"creation_id": str(uuid4())}
+        ).json()["id"]
         endpoint = f"/dealerships/{dealer}/conversations/{conversation}/messages"
         assert (
-            client.post(
-                endpoint, json={"request_id": str(uuid4()), "text": "stock MIA-001"}
+            post_and_wait(
+                client, endpoint, json={"request_id": str(uuid4()), "text": "stock MIA-001"}
             ).status_code
             == 200
         )
@@ -66,7 +69,9 @@ def test_abrupt_nhtsa_wait_preserves_previous_safety_and_choices(
             for runner in app.state.conversation_service._runners.values():
                 runner.set_safety_service(SafetyService(NhtsaClient(mock)))
             prior_id = str(uuid4())
-            prior = client.post(endpoint, json={"request_id": prior_id, "text": "ratings"})
+            prior = post_and_wait(
+                client, endpoint, json={"request_id": prior_id, "text": "ratings"}
+            )
             assert prior.status_code == 200, prior.text
             previous_body = prior.json()
         finally:
@@ -126,7 +131,12 @@ def test_abrupt_nhtsa_wait_preserves_previous_safety_and_choices(
                 assert time.monotonic() < deadline, "NHTSA gate not reached"
                 threading.Event().wait(0.01)
             # A network wait holds no SQLite transaction: another durable write succeeds.
-            assert remote.post(f"/dealerships/{dealer}/conversations", json={}).status_code == 201
+            assert (
+                remote.post(
+                    f"/dealerships/{dealer}/conversations", json={"creation_id": str(uuid4())}
+                ).status_code
+                == 201
+            )
             assert remote.get("/health").status_code == 200
             process.kill()
             process.wait(timeout=10)

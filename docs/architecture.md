@@ -87,10 +87,18 @@ it never commits. ORM objects may pass between repository and store only while t
 alive; the store returns materialized application records/outcomes to the asynchronous service.
 `conversations/completion.py` owns completion invariants and response assembly;
 `outcomes.py` owns terminal outcome serialization; `execution.py` owns cancellation draining
-and per-process capacity. Startup recovers only requests older than the 120-second protection
-window, and submission performs the same scoped stale check before admission. The threshold
-measures request age, assumes synchronized clocks across hosts, and does not detect worker liveness
-or renew ownership. A late completion reads the winning terminal outcome under its row lock.
+and per-process capacity. `leases.py` owns asynchronous renewal and recovery tasks.
+Admission sets `lease_expires_at` to PostgreSQL `clock_timestamp()` plus 120 seconds; renewal
+extends it every 20 seconds only while active and unexpired. Each worker selects at most 100
+expired requests every 30 seconds with `FOR UPDATE SKIP LOCKED`, then settles them in one
+short transaction. A partial expiration index supports candidate scanning. Startup and scoped
+submissions use the same database-clock predicate. Audit timestamps remain ISO strings and do
+not decide ownership. SQLite tests use database-time expressions and immediate recovery.
+A late completion reads the winning terminal outcome under its row lock. Expiry authorizes
+recovery; completion may win before recovery locks the row. Renewal cannot revive expired work.
+Background database writes are drained on cancellation before their engine is disposed.
+Creation uses a unique dealership/creation-ID index with reconciliation after a race or uncertain
+commit. Retrying returns the original pinned conversation before testing provider availability.
 The provider is called only after the user/request admission commits. No session crosses that await.
 Completion atomically stores the rendered assistant message, complete new model/tool turn,
 presentation order, selection, and serialized terminal response.
@@ -117,19 +125,29 @@ by a conversation-local sequence; bounded model replay uses only completed whole
 failed and interrupted user messages remain visible to clients.
 
 The model can request repository-backed evidence and return only typed intent, vehicle IDs, field
-names, and a selection action. Application validation rejects unknown evidence IDs and extra
+names, and safety evidence IDs. Application validation rejects unknown evidence IDs and extra
 factual values, then a deterministic renderer supplies identity, money, specifications, null
 handling, displayed ordering, and evidence-based safety rendering.
-`chat/answers.py` holds the typed answer schema, evidence policy, and inventory renderer.
+`chat/answers.py` holds the typed answer schema, evidence policy, selection policy, and inventory renderer.
 Its validation errors become Pydantic AI repair requests only in the runner adapter.
 List answers must reference the latest search result set, even when older evidence remains
 available for follow-up resolution. Multiple searches use the final result set, not their union.
 `chat/context.py` owns per-turn evidence and tool budgets; `chat/tools.py` adapts typed model
 calls to the existing inventory/safety services. The runner owns model-history serialization,
 agent execution, and staging the final replay/selection result, rather than SQL or rendering rules.
-For a validated detail answer, application reference resolution also determines the retained
-selection; model defaults cannot leave the next pronoun without a subject. Selection, reply,
-and replay still commit together through the existing completion transaction.
+The model output has no selection field. After validation, `selection_for` derives the update:
+details/safety select the conservatively resolved vehicle, a new list clears prior selection unless
+the user explicitly identifies a displayed vehicle, no-match clears it, and clarification/unsupported
+answers preserve it. The runner stages this update; selection, reply and replay still commit together
+through the existing completion transaction.
+
+The runner puts freshly fetched selected/list records in `current_vehicle_evidence` using the same
+projection as tool results. Model context therefore reflects current inventory, including nullable
+fields, rather than requiring another stock tool call or relying on stale history. Existing bounded
+record counts, thread-owned reads, and full provider-envelope byte checks still apply. Model-visible
+instructions, field descriptions and tool docstrings define intent meanings and tool prerequisites.
+Missing-stock and safety-clarification results lead to clarify, while no_match requires an empty
+filtered search. Validation feedback explains the correction without asking for irrelevant retries.
 
 ## NHTSA safety ownership
 
@@ -191,8 +209,13 @@ checks reject old read/write results. No write is triggered by mounting. The con
 creation, exact request identity, draft/pending separation, storage warnings, bounded history loading,
 terminal outcome precedence, and explicit missing-conversation recovery. Stable message IDs are
 upserted and sorted by sequence; terminal statuses cannot be downgraded by stale in-progress rows.
-Check reply rereads from the unresolved user sequence minus one (or zero), including status-only
-changes with no new assistant row. An incomplete reconciliation keeps sending disabled.
+POST performs admission; the service tracks execution independently of the HTTP coroutine.
+The controller projects the committed user row through history, then polls the requests resource
+at most 20 times with capped 0.5-5 second backoff. Each fetch has a 15-second deadline.
+Reload resumes server-confirmed active requests without POST. Check reply uses GET for known
+admission and same-ID POST for uncertain admission. Terminal status wins over stale history.
+History reconciliation reads from the unresolved user sequence minus one (or zero); incomplete
+history keeps sending disabled. View generation checks prevent further polling after a view changes.
 
 `src/api/client.ts` consumes `src/api/generated.ts`, validates consumed fields at runtime, checks
 HTTP status and error codes, and bounds native-fetch deadlines. `scripts/export-openapi.py` uses the
@@ -225,3 +248,39 @@ stale recovery on submission, preserved completed history, and terminal replay w
 by either verification path.
 
 ReplyProgress owns only the current mounted browser-wait timer and cleans it up on completion. Its stage messages are elapsed-time guidance, not backend telemetry; per-second updates are outside the live region. requestFeedback shares sanitized error-code explanations between the controller notice and persisted message rendering. Existing API error codes supply the cause without a schema change.
+
+## Evaluation and operational events
+
+`evaluation/scoring.py` owns strict labels and deterministic scoring; `evaluation/runner.py`
+constructs isolated CSV inventory, production provider/tool adapters, and controlled NHTSA HTTP
+fixtures. `evaluation/cli.py` is an opt-in entry point separate from API serving. Replay messages
+supply tool arguments and final structured output. Failed runs remain failed report rows;
+human semantic review stays distinct from automatic checks. Strict scoring retains every labeled
+check; functional scoring separately excludes tool-choice efficiency. Local reports include bounded
+validation feedback (without rejected input payloads) and a model-interface source fingerprint.
+The shared verifier exercises the
+harness with a FunctionModel, without billed model requests.
+
+`observability.py` owns task-local correlation/counters and a dedicated JSON logger.
+The service measures admission and total duration; the model wrapper measures model requests
+and proposed tool counts; NHTSA measures bounded HTTP attempts. Events omit prompts, keys and
+payloads. Local evaluation reports retain labeled inputs/outputs for review and are not logs.
+
+## Admission and execution ownership
+
+`ConversationService.submit` owns short admission and launch; `_execute` owns context loading,
+provider invocation, lease renewal, and terminal settlement. The service tracks tasks by internal
+request ID, observes exceptions without logging sensitive payloads, and retains capacity through
+cleanup. Admission commits before task launch and 202. Failed launch conditionally settles the
+owned request, while an uncertain storage failure remains recoverable through its durable identity.
+The service stops admission and drains for 20 seconds at shutdown, then cancels/joins remaining
+admissions and execution before closing runners. Threaded writes finish before interruption is
+settled. A browser disconnect does not cancel accepted execution.
+
+`status` validates dealership/conversation/request scope through the store, performs scoped stale
+recovery for active work, and returns a materialized public representation. Terminal status reads
+use two indexed queries regardless of transcript size; no replay history is loaded or exposed.
+Pydantic schemas describe a discriminated active/completed/failed-or-interrupted union. GET returns
+200 with the exact persisted terminal body as outcome, or active state without outcome. POST
+terminal replay preserves both stored HTTP status and body. No ORM access belongs to routes.
+Two workers share durable status through PostgreSQL. Task maps track execution owned by each process.

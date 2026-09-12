@@ -64,7 +64,6 @@ async def test_scripted_agent_uses_tool_evidence_and_repairs_invented_value(
         answer = {
             "intent": "list",
             "vehicles": [{"vehicle_id": vehicle_id, "fields": ["price"]}],
-            "selection": {"action": "keep", "vehicle_id": None},
         }
         if calls == 2:
             answer["vehicles"][0]["price"] = "$1.00"

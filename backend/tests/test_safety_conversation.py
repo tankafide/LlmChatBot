@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic_ai.models.function import FunctionModel
 from safety_scripted_model import ScriptedSafety
 from test_conversation_api import add_vehicle, mia_dealership_id
+from turn_client import post_and_wait
 
 from autoassist.app import create_app
 from autoassist.chat.grounded import PydanticChatRunner
@@ -75,16 +76,18 @@ def test_http_combined_ambiguity_restart_choice_and_replay(
                 if iteration == 0:
                     dealer = mia_dealership_id(client)
                     add_vehicle(app, dealer)
-                    conversation = client.post(
-                        f"/dealerships/{dealer}/conversations", json={}
+                    conversation = post_and_wait(
+                        client,
+                        f"/dealerships/{dealer}/conversations",
+                        json={"creation_id": str(uuid4())},
                     ).json()["id"]
                     endpoint = f"/dealerships/{dealer}/conversations/{conversation}/messages"
-                    selected = client.post(
-                        endpoint, json={"request_id": str(uuid4()), "text": "stock MIA-001"}
+                    selected = post_and_wait(
+                        client, endpoint, json={"request_id": str(uuid4()), "text": "stock MIA-001"}
                     )
                     assert selected.status_code == 200, selected.text
-                    response = client.post(
-                        endpoint, json={"request_id": request_id, "text": "both"}
+                    response = post_and_wait(
+                        client, endpoint, json={"request_id": request_id, "text": "both"}
                     )
                     assert response.status_code == 200, response.text
                     original = response.json()
@@ -92,25 +95,33 @@ def test_http_combined_ambiguity_restart_choice_and_replay(
                     assert "NHTSA ID 202" in original["assistant_message"]["text"]
                     assert len(calls) == 2
                 elif iteration == 1:
-                    replay = client.post(endpoint, json={"request_id": request_id, "text": "both"})
+                    replay = post_and_wait(
+                        client, endpoint, json={"request_id": request_id, "text": "both"}
+                    )
                     assert replay.json() == original and len(calls) == 2
-                    choice = client.post(endpoint, json={"request_id": str(uuid4()), "text": "202"})
+                    choice = post_and_wait(
+                        client, endpoint, json={"request_id": str(uuid4()), "text": "202"}
+                    )
                     assert choice.status_code == 200, choice.text
                     reply = choice.json()["assistant_message"]["text"]
                     assert "Overall: 5/5" in reply and "Frontal: not rated" in reply
                     assert calls[-1].endswith("/202") and len(calls) == 4
-                    fresh = client.post(
-                        endpoint, json={"request_id": str(uuid4()), "text": "ratings"}
+                    fresh = post_and_wait(
+                        client, endpoint, json={"request_id": str(uuid4()), "text": "ratings"}
                     )
                     assert fresh.status_code == 200 and len(calls) == 5
                     add_vehicle(app, dealer, "MIA-002")
                     for stock in ("MIA-002", "MIA-001"):
-                        selected = client.post(
-                            endpoint, json={"request_id": str(uuid4()), "text": f"stock {stock}"}
+                        selected = post_and_wait(
+                            client,
+                            endpoint,
+                            json={"request_id": str(uuid4()), "text": f"stock {stock}"},
                         )
                         assert selected.status_code == 200
                 else:
-                    stale = client.post(endpoint, json={"request_id": str(uuid4()), "text": "202"})
+                    stale = post_and_wait(
+                        client, endpoint, json={"request_id": str(uuid4()), "text": "202"}
+                    )
                     assert stale.status_code == 200 and len(calls) == 5
                     assert "5/5" not in stale.json()["assistant_message"]["text"]
             finally:

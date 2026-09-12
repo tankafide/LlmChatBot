@@ -32,7 +32,23 @@ async def search_inventory(
     price_max_cents: PriceCents | None = None,
     limit: Limit = 10,
 ) -> dict[str, object]:
-    """Search the current dealership inventory using combined filters."""
+    """Find/list vehicles using only the customer's requested filters.
+
+    Do not search to answer a selected-vehicle follow-up, resolve an ambiguous pronoun,
+    replace a missing stock lookup, or answer an unsupported request. Reuse the prompt's
+    refreshed current_vehicle_evidence for follow-ups. Empty items means no_match;
+    otherwise return list using these latest results.
+
+    Args:
+        make: Requested manufacturer, or null when unspecified.
+        model: Requested model, or null when unspecified.
+        body_type: Requested body type, such as SUV, Sedan or Truck.
+        year_min: Inclusive earliest year; for an exact year set both year bounds.
+        year_max: Inclusive latest year, or null for no upper bound.
+        price_min_cents: Inclusive minimum price in cents, not dollars.
+        price_max_cents: Inclusive maximum price in cents, not dollars.
+        limit: Maximum number of results, from 1 to 10.
+    """
     if year_min is not None and year_max is not None and year_min > year_max:
         raise ModelRetry("year_min must not exceed year_max")
     if (
@@ -60,7 +76,7 @@ async def search_inventory(
     ctx.deps.search_executed = True
     ctx.deps.last_search_ids = tuple(item.id for item in page.items)
     value: dict[str, object] = {
-        "items": [_tool_vehicle(item) for item in page.items],
+        "items": [vehicle_evidence(item) for item in page.items],
         "has_more": page.next_after is not None,
     }
     ctx.deps.register_tool_result(value)
@@ -70,7 +86,15 @@ async def search_inventory(
 async def get_vehicle_by_stock(
     ctx: RunContext[ChatDependencies], stock_number: str
 ) -> dict[str, object]:
-    """Retrieve one current-dealership vehicle by its exact stock number."""
+    """Retrieve one vehicle by stock when absent from current_vehicle_evidence.
+
+    Reuse existing current evidence for selected-vehicle follow-ups instead of fetching
+    it again. found=false means return clarify and ask for a valid stock; do not run a
+    broad search or use no_match. found=true supplies evidence for details or safety tools.
+
+    Args:
+        stock_number: The customer's exact stock number, never an invented identifier.
+    """
     try:
         item = await asyncio.to_thread(
             ctx.deps.inventory.get_by_source_id,
@@ -78,10 +102,13 @@ async def get_vehicle_by_stock(
             stock_number,
         )
     except InventoryNotFoundError:
-        value: dict[str, object] = {"found": False}
+        value: dict[str, object] = {
+            "found": False,
+            "clarification": "Stock not found. Return clarify and ask for a valid stock number.",
+        }
     else:
         ctx.deps.evidence[item.id] = item
-        value = {"found": True, "vehicle": _tool_vehicle(item)}
+        value = {"found": True, "vehicle": vehicle_evidence(item)}
     ctx.deps.register_tool_result(value)
     return value
 
@@ -140,16 +167,31 @@ async def _lookup_safety(ctx: RunContext[ChatDependencies], branch: str) -> dict
 
 
 async def lookup_recalls(ctx: RunContext[ChatDependencies]) -> dict[str, object]:
-    """Look up NHTSA campaigns for the resolved scoped inventory vehicle."""
+    """Get recalls for the vehicle identified by stock, list reference or selected context.
+
+    Use only for a customer recall request, never for price/specification clarification.
+    Resolve an explicit stock with get_vehicle_by_stock first if absent from current evidence.
+    A clarification result means return clarify and stop, not another lookup. An evidence_id
+    means return safety with that ID, even for empty/unavailable results. Do not repeat this
+    branch. Call crash ratings as well only if requested. Selection is application-owned.
+    """
     return await _lookup_safety(ctx, "recalls")
 
 
 async def lookup_crash_ratings(ctx: RunContext[ChatDependencies]) -> dict[str, object]:
-    """Look up NHTSA crash ratings or resolve the current message's pending variant choice."""
+    """Get crash ratings for the identified vehicle or resolve a pending NHTSA variant choice.
+
+    Use only for crash ratings or pending variant choices, never for inventory clarification.
+    Resolve an explicit stock with get_vehicle_by_stock first if absent from current evidence.
+    A clarification result means return clarify and stop. An evidence_id means return safety
+    with that ID, even for ambiguous/unavailable results. Do not repeat this branch. Call
+    recalls as well only if requested. The application resolves choices and manages selection.
+    """
     return await _lookup_safety(ctx, "crash")
 
 
-def _tool_vehicle(record: VehicleRecord) -> dict[str, object]:
+def vehicle_evidence(record: VehicleRecord) -> dict[str, object]:
+    """The same factual inventory projection for tool results and refreshed prompt context."""
     return {
         "vehicle_id": record.id,
         "stock_number": record.source_id,

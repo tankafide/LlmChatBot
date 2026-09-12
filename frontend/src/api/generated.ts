@@ -51,6 +51,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/dealerships/{dealership_id}/conversations/{conversation_id}/requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Request Status */
+        get: operations["get_request_status_dealerships__dealership_id__conversations__conversation_id__requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dealerships/{dealership_id}/vehicles": {
         parameters: {
             query?: never;
@@ -106,6 +123,43 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptedRequestResponse */
+        AcceptedRequestResponse: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "in_progress";
+        };
+        /** CompletedRequestStatus */
+        CompletedRequestStatus: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            outcome: components["schemas"]["SubmitMessageResponse"];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "completed";
+        };
         /** ConversationHistoryResponse */
         ConversationHistoryResponse: {
             /**
@@ -175,7 +229,13 @@ export interface components {
             selected_vehicle_id: string | null;
         };
         /** CreateConversationRequest */
-        CreateConversationRequest: Record<string, never>;
+        CreateConversationRequest: {
+            /**
+             * Creation Id
+             * Format: uuid
+             */
+            creation_id: string;
+        };
         /** DealershipListResponse */
         DealershipListResponse: {
             /** Items */
@@ -203,6 +263,25 @@ export interface components {
         /** ErrorEnvelope */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorDetail"];
+        };
+        /** FailedRequestStatus */
+        FailedRequestStatus: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            outcome: components["schemas"]["ErrorEnvelope"];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "failed" | "interrupted";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -557,6 +636,15 @@ export interface operations {
                     "application/json": components["schemas"]["SubmitMessageResponse"];
                 };
             };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptedRequestResponse"];
+                };
+            };
             /** @description Conversation or dealership not found */
             404: {
                 headers: {
@@ -613,6 +701,57 @@ export interface operations {
             };
             /** @description Chat provider timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_request_status_dealerships__dealership_id__conversations__conversation_id__requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dealership_id: string;
+                conversation_id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptedRequestResponse"] | components["schemas"]["CompletedRequestStatus"] | components["schemas"]["FailedRequestStatus"];
+                };
+            };
+            /** @description Conversation or dealership not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Connection, capacity, or storage unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

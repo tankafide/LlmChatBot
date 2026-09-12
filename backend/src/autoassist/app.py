@@ -15,6 +15,7 @@ from autoassist.chat.grok import create_grok_runner
 from autoassist.chat.grounded import PydanticChatRunner
 from autoassist.chat.openai import create_openai_runner
 from autoassist.config import Settings, load_runtime_config
+from autoassist.conversations.leases import stop_task, sweep_stale
 from autoassist.conversations.repository import ConversationRepository
 from autoassist.conversations.service import ConversationService
 from autoassist.conversations.store import ConversationStore
@@ -29,6 +30,7 @@ from autoassist.db.database import (
 from autoassist.integrations.nhtsa import NhtsaClient, create_client
 from autoassist.inventory.repository import InventoryRepository
 from autoassist.inventory.service import InventoryService
+from autoassist.observability import configure_events
 from autoassist.safety.service import SafetyService
 
 RunnerFactory = Callable[[str, str, InventoryService], ChatRunner]
@@ -42,6 +44,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        configure_events()
+        sweeper: asyncio.Task[None] | None = None
         runtime_settings = configured_settings or Settings()
         runtime_config = load_runtime_config(runtime_settings.config_file)
         engine = create_database_engine(runtime_settings.database_url)
@@ -76,9 +80,7 @@ def create_app(
             conversation_store = ConversationStore(
                 session_factory,
                 ConversationRepository(),
-                stale_request_seconds=(
-                    run_timeout_seconds + 60.0 if engine.dialect.name == "postgresql" else 0.0
-                ),
+                lease_seconds=120.0 if engine.dialect.name == "postgresql" else 0.0,
             )
             conversation_service = ConversationService(
                 conversation_store,
@@ -86,7 +88,9 @@ def create_app(
                 runners,
                 run_timeout_seconds=run_timeout_seconds,
             )
-            conversation_store.recover_interrupted()
+            await asyncio.to_thread(conversation_store.recover_interrupted)
+            if conversation_store.leases_enabled:
+                sweeper = asyncio.create_task(sweep_stale(conversation_store))
             app.state.conversation_service = conversation_service
             yield
         finally:
@@ -104,6 +108,7 @@ def create_app(
                                 "Startup cleanup failure: type=%s", type(result).__name__
                             )
             finally:
+                await stop_task(sweeper)
                 await nhtsa_client.aclose()
                 engine.dispose()
 
