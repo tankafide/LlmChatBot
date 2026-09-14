@@ -13,7 +13,11 @@ Read the relevant parts of the authoritative [shared stack baseline](../../../do
 
 Establish the requested diff/base or code scope from the request and repository state. Preserve unrelated working changes. Read changed code and the relevant callers, dependencies, and tests beyond diff context. Separate introduced defects from pre-existing issues outside scope. If a revision is ambiguous, inspect local branches and status first; ask only if the intended comparison still cannot be resolved.
 
-Load only the applicable specialist bodies below as supporting guidance. Load affected verification guidance early, before choosing checks. Selection does not create subagents or recursively invoke another orchestrator. Specialists remain explicitly invocable; their disabled implicit policy prevents independent automatic activation.
+Select only the specialists that cover the requested diff or code scope. For each selection, start a dedicated specialist session that reads its own linked `SKILL.md` and any references that skill requires. Do not load specialist bodies into the review orchestrator context.
+
+Give the specialist the review-only authorization boundary, requested diff/base or code scope, affected paths, relevant contracts and tests, observed repository facts, and a concrete review question. Ask for evidence-backed risks, missing verification, and actionable findings with locations and triggers. Dispatch verification specialists early enough for their reports to guide the review scope. Do not seed the specialist with the conclusion the review should reach.
+
+Run independent specialist sessions concurrently when possible. The review orchestrator checks evidence, resolves duplicate or conflicting reports, traces cross-boundary consequences, and produces the final findings. Specialists do not modify application code unless the user’s review request explicitly authorizes fixes, and they do not invoke another orchestrator. Do not dispatch unaffected specialists.
 
 | Specialist and path | Purpose and selection trigger |
 | --- | --- |
@@ -30,7 +34,7 @@ Load only the applicable specialist bodies below as supporting guidance. Load af
 | [backend-verification](../autoassist-backend-verification/SKILL.md) | Any backend behavior or backend check evidence in scope. |
 | [frontend-verification](../autoassist-frontend-verification/SKILL.md) | UI behavior/checks, or API type drift once the frontend exists. |
 
-Use both architecture skills for responsibility changes crossing the API boundary, plus api-contract for schema consequences. A local CSS fix needs frontend, ui-style, and frontend-verification, not persistence; a repository boundary change needs backend-architecture without frontend-architecture. Running existing container checks alone need not load docker.
+Delegate both architecture skills for responsibility changes crossing the API boundary, plus api-contract for schema consequences. A local CSS fix delegates frontend, ui-style, and frontend-verification, not persistence; a repository boundary change delegates backend-architecture without frontend-architecture. Running existing container checks alone need not load docker.
 
 ## Review behavior across boundaries
 

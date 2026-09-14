@@ -5,7 +5,7 @@ description: Implement or fix an authorized AutoAssist feature, refactor, or con
 
 # AutoAssist development
 
-Deliver the requested working slice with evidence that its completion criteria pass. Keep this orchestrator thin: select supporting instructions below; do not automatically create subagents or recursively invoke other orchestrators.
+Deliver the requested working slice with evidence that its completion criteria pass. Keep this orchestrator thin: select the supporting specialists below and invoke each selected specialist in a separate agent session. Do not recursively invoke another orchestrator.
 
 ## Establish the slice
 
@@ -15,9 +15,13 @@ Project-wide requirements remain in `AGENTS.md`. Read the relevant sections of t
 
 Keep a short, current implementation plan in `docs/plans/`, proportionate to the change. For each meaningful step identify the concrete behavior and affected modules/contracts, dependencies, approach, success/failure outcome, and verification. Follow existing exit criteria and revise the plan when implementation evidence changes them. Resolve locally discoverable commands and routine reversible choices yourself. Use `docs/context/inventory/data.csv` for the real import path; clearly labeled synthetic test fixtures may test queries but cannot stand in for that attachment.
 
-## Load applicable specialists
+## Delegate applicable specialists
 
-Read the linked `SKILL.md` bodies as supporting guidance only when their trigger applies. Load relevant verification guidance before designing tests. Their explicit-only metadata prevents independent implicit selection; orchestrator selection is an agreed routing convention, not an access restriction.
+Select only specialists whose triggers apply. For each selection, start a dedicated specialist session that is instructed to read its own linked `SKILL.md` and the references that skill requires. Do not load specialist bodies into the orchestrator context.
+
+Give every specialist the user goal, authorized scope, relevant accepted-plan paths, the affected files or contracts, observed repository facts, and a concrete assignment. Ask it to return decisions, risks, affected paths, and acceptance or verification evidence relevant to its specialty. Give verification specialists their assignment before implementation is designed. Do not preload a conclusion that the specialist should independently assess.
+
+Run independent specialist sessions concurrently when their work does not depend on another report. The orchestrator remains responsible for resolving conflicts, preserving the user’s scope, integrating the reports, and completing the implementation. A specialist may make a bounded, non-overlapping change only when the assignment clearly grants it ownership; otherwise it reports its guidance for the orchestrator to apply. Keep specialist sessions focused: do not dispatch every specialist by default or use a specialist to invoke another orchestrator.
 
 | Specialist and path | Purpose and selection trigger |
 | --- | --- |
@@ -34,7 +38,7 @@ Read the linked `SKILL.md` bodies as supporting guidance only when their trigger
 | [Backend verification](../autoassist-backend-verification/SKILL.md) | Affected backend behavior, integration/storage checks, and backend static verification. |
 | [Frontend verification](../autoassist-frontend-verification/SKILL.md) | Affected UI/adapter behavior and browser checks; API changes also need generated-type drift checks once frontend exists. |
 
-A frontend hook extraction needs frontend architecture and applicable frontend/verification guidance, not database guidance. A repository boundary change needs backend architecture/persistence and backend verification. Changing conversation ownership across the API boundary needs both architecture skills and API contract. Persistent follow-ups need chat-agent, persistence, backend, and backend verification; add other skills only for changed boundaries. A local CSS fix uses frontend, UI style, and frontend verification and stays local.
+A frontend hook extraction delegates frontend architecture and applicable frontend/verification guidance, not database guidance. A repository boundary change delegates backend architecture, persistence, and backend verification. Changing conversation ownership across the API boundary delegates both architecture skills and API contract. Persistent follow-ups delegate chat-agent, persistence, backend, and backend verification; add other skills only for changed boundaries. A local CSS fix delegates frontend, UI style, and frontend verification and stays local.
 
 ## Implement and verify
 

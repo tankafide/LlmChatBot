@@ -17,9 +17,13 @@ Project requirements remain in `AGENTS.md`. Read the relevant sections of the au
 
 Resolve correctness-critical uncertainties now through repository searches, tool discovery, current primary documentation where needed, and focused feasibility experiments. Keep experiments isolated and within planning scope; do not implement the application feature. Choose routine reversible details using existing project decisions. Unknown local commands require inspection, not a request for the user to run tests. For genuinely unavailable inputs, identify the affected step, ask one precise question, and continue independent planning. The assignment inventory is preserved at `docs/context/inventory/data.csv`; synthetic test fixtures are not a substitute for that real import path.
 
-## Load relevant guidance
+## Delegate relevant guidance
 
-Read only selected specialist bodies as supporting guidance, including the applicable verification skill early. The specialists are explicit-only entry points that this orchestrator can deliberately read; this routing creates no subagents and requires no recursive orchestrator invocation. Their paths below are relative to this file.
+Select only the specialists that affect the proposed slice. For each selection, start a dedicated specialist session that reads its own linked `SKILL.md` and any references that skill requires. Do not load specialist bodies into the planning orchestrator context.
+
+Give the specialist the planning request, the planning-only authorization boundary, relevant accepted-plan and code paths, observed facts, unresolved decisions, and a concrete question. Ask for design constraints, affected ownership/contracts, failure and recovery cases, and acceptance or verification criteria. Dispatch relevant verification specialists early enough for their reports to shape the plan. Do not tell a specialist what conclusion to reach.
+
+Run independent specialist sessions concurrently when possible. The planning orchestrator integrates their reports, resolves conflicts using repository evidence and the user’s scope, and writes the single coherent plan. Specialists do not implement the application during planning and do not invoke another orchestrator. Do not delegate unaffected domains merely to make the plan look comprehensive.
 
 | Specialist | Load when planning | Use its output for |
 | --- | --- | --- |
@@ -36,7 +40,7 @@ Read only selected specialist bodies as supporting guidance, including the appli
 | [backend-verification](../autoassist-backend-verification/SKILL.md) | Any affected server behavior, storage, integration, or runtime path | Behavioral, failure, and static acceptance checks |
 | [frontend-verification](../autoassist-frontend-verification/SKILL.md) | Any affected UI behavior; API schema changes once frontend exists | Browser/adapter checks and generated-type drift |
 
-Use both architecture skills only when responsibilities cross the API boundary; a local fix needs no broad redesign. A frontend hook extraction needs frontend architecture and verification, not database guidance. Persistent vehicle follow-ups need backend, persistence, chat-agent, and backend verification; add architecture for state ownership changes and contract/frontend guidance only for affected boundaries. A CSS-only plan uses frontend, UI style, and frontend verification.
+Delegate both architecture skills only when responsibilities cross the API boundary; a local fix needs no broad redesign. A frontend hook extraction delegates frontend architecture and verification, not database guidance. Persistent vehicle follow-ups delegate backend, persistence, chat-agent, and backend verification; add architecture for state ownership changes and contract/frontend guidance only for affected boundaries. A CSS-only plan delegates frontend, UI style, and frontend verification.
 
 ## Write finishable steps
 
