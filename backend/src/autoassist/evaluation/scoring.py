@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class TurnLabel(BaseModel):
+    """Describe expected behavior for one evaluation message.
+
+    Optional filter, stock, field, safety, and text checks complement intent/tool checks; the
+    rubric records semantic criteria still requiring human review.
+    """
+
     model_config = ConfigDict(extra="forbid")
     text: str
     intent: str
@@ -20,6 +26,12 @@ class TurnLabel(BaseModel):
 
 
 class ConversationLabel(BaseModel):
+    """Group one to five labeled turns into an evaluation case with a stable ID/category.
+
+    safety_fixture selects controlled NHTSA responses; live evaluation still calls the
+    configured model.
+    """
+
     model_config = ConfigDict(extra="forbid")
     id: str
     category: str

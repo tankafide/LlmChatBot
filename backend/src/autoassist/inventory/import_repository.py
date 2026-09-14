@@ -12,6 +12,12 @@ from autoassist.inventory.records import ImportResult, ImportVehicle, normalize_
 
 
 class InventoryImportRepository:
+    """Stage dealership-scoped inventory inserts/updates using batched stock lookups.
+
+    Preserve existing UUIDs and rows absent from the source file; the import service owns
+    session lifetime and atomic commit.
+    """
+
     _lookup_batch_size = 500
 
     def dealership_id(self, session: Session, slug: str) -> str | None:

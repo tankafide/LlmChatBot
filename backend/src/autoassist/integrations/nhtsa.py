@@ -73,6 +73,12 @@ def create_client() -> httpx.AsyncClient:
 
 
 class NhtsaError(Exception):
+    """Carry a typed lookup failure reason without exposing raw upstream content.
+
+    SafetyService converts expected transport, budget, or payload failures into unavailable
+    evidence.
+    """
+
     def __init__(self, reason: Reason) -> None:
         """Create a typed safety lookup failure without raising it.
 
@@ -85,6 +91,12 @@ class NhtsaError(Exception):
 
 @dataclass(slots=True)
 class LookupBudget:
+    """Track the shared NHTSA call/time allowance for one turn.
+
+    deadline is monotonic, calls and elapsed charge attempted requests, and correlation IDs
+    support metadata-only events.
+    """
+
     deadline: float
     conversation_id: str = ""
     request_id: str = ""
@@ -93,6 +105,12 @@ class LookupBudget:
 
 
 class NhtsaClient:
+    """Fetch bounded NHTSA JSON using an externally owned async HTTP client.
+
+    Enforce shared call/time/response-size limits and classify failures; safety parsing
+    separately validates record identity and meaning.
+    """
+
     def __init__(self, client: httpx.AsyncClient) -> None:
         """Wrap the shared HTTP client used by the safety service.
 

@@ -30,9 +30,13 @@ VehicleProjection = tuple[
 ]
 
 
-# Vehicle queries share a dealership-scoped projection and materialize plain records.
-# The service owns the session; attached ORM rows do not escape this repository.
 class InventoryRepository:
+    """Build dealership-scoped inventory queries and return materialized records.
+
+    Shared projections and normalized filters serve both HTTP and tools; the inventory service
+    owns sessions and error translation.
+    """
+
     def dealership_exists(self, session: Session, dealership_id: str) -> bool:
         """Return True if the dealership ID exists, otherwise False; no ORM object leaves this
         query.

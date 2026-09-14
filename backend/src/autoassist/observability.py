@@ -8,6 +8,12 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class TurnMetrics:
+    """Hold mutable counters and correlation IDs for one executing turn.
+
+    A ContextVar associates these values with async work; this is operational metadata, not
+    durable request state.
+    """
+
     conversation_id: str
     request_id: str
     model_calls: int = 0

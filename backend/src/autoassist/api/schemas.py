@@ -19,29 +19,52 @@ MAX_SQLITE_PRICE = Decimal("92233720368547758.07")
 
 
 class ErrorDetail(BaseModel):
+    """Carry a public machine-readable error code and human-readable message.
+
+    Consumers use the code to distinguish retry, rejection, and terminal failure behavior.
+    """
+
     code: str
     message: str
 
 
 class ErrorEnvelope(BaseModel):
+    """Wrap a public application error under the error key for consistent HTTP handling."""
+
     error: ErrorDetail
 
 
 class HealthResponse(BaseModel):
+    """Represent the successful storage health response.
+
+    It does not claim external model or NHTSA availability.
+    """
+
     status: str
 
 
 class DealershipResponse(BaseModel):
+    """Expose a dealership UUID, configured slug, and display name without internal connection
+    settings.
+    """
+
     id: UUID
     slug: str
     name: str
 
 
 class DealershipListResponse(BaseModel):
+    """Wrap the publicly listed dealership records; items may be empty."""
+
     items: list[DealershipResponse]
 
 
 class VehicleResponse(BaseModel):
+    """Expose an inventory summary with decimal price text and dealership-local stock number.
+
+    Nullable price/body fields represent unknown inventory data, not zero or empty facts.
+    """
+
     id: UUID
     source_id: str
     make: str
@@ -52,6 +75,12 @@ class VehicleResponse(BaseModel):
 
 
 class VehicleDetailResponse(VehicleResponse):
+    """Extend the public vehicle summary with supported specifications.
+
+    Unknown optional facts remain null so clients cannot mistake missing data for confirmed
+    values.
+    """
+
     trim: str | None
     condition: str | None
     mileage: int | None
@@ -62,11 +91,22 @@ class VehicleDetailResponse(VehicleResponse):
 
 
 class InventoryPageResponse(BaseModel):
+    """Carry one public inventory page and its continuation UUID.
+
+    next_after is null at the end; an empty items list is a valid search result.
+    """
+
     items: list[VehicleResponse]
     next_after: UUID | None
 
 
 class InventoryQuery(BaseModel):
+    """Validate HTTP inventory filters before repository access.
+
+    Bounds are inclusive, decimal prices have at most two places, and minimums cannot exceed
+    maximums. Unknown query fields are rejected.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     make: FilterText | None = None
@@ -127,12 +167,23 @@ def decimal_to_cents(value: Decimal | None) -> int | None:
 
 
 class CreateConversationRequest(BaseModel):
+    """Identify a conversation-creation attempt independently of message submission.
+
+    Reusing creation_id within a dealership recovers the same conversation after an uncertain
+    response.
+    """
+
     creation_id: UUID
 
     model_config = ConfigDict(extra="forbid")
 
 
 class ConversationResponse(BaseModel):
+    """Expose the created or recovered conversation identity and public selection field.
+
+    Provider configuration and model replay stay internal.
+    """
+
     id: UUID
     dealership_id: UUID
     created_at: datetime
@@ -140,6 +191,12 @@ class ConversationResponse(BaseModel):
 
 
 class SubmitMessageRequest(BaseModel):
+    """Validate one immutable client request ID and its message text.
+
+    Whitespace-only text is rejected without trimming valid payloads, preserving equality for
+    same-ID retries.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     request_id: UUID
@@ -160,6 +217,11 @@ class SubmitMessageRequest(BaseModel):
 
 
 class ConversationMessageResponse(BaseModel):
+    """Expose a saved user or assistant message with server sequence and request status.
+
+    A failed/interrupted user message remains visible even when no assistant reply exists.
+    """
+
     id: UUID
     sequence: int
     request_id: UUID
@@ -171,6 +233,12 @@ class ConversationMessageResponse(BaseModel):
 
 
 class SubmitMessageResponse(BaseModel):
+    """Represent the stored completed-turn response used for terminal replay.
+
+    Includes both messages and resulting selection; new asynchronous admission is represented
+    separately.
+    """
+
     conversation_id: UUID
     request_id: UUID
     status: Literal["completed"]
@@ -180,6 +248,11 @@ class SubmitMessageResponse(BaseModel):
 
 
 class ConversationHistoryResponse(BaseModel):
+    """Expose a page of durable conversation history and current selection.
+
+    next_after_sequence is null at the end; history includes admitted unsuccessful user turns.
+    """
+
     conversation_id: UUID
     selected_vehicle_id: UUID | None
     items: list[ConversationMessageResponse]
@@ -187,12 +260,22 @@ class ConversationHistoryResponse(BaseModel):
 
 
 class AcceptedRequestResponse(BaseModel):
+    """Acknowledge durable admission with status in_progress and request identity.
+
+    It does not promise completion; clients poll the request status for the final outcome.
+    """
+
     conversation_id: UUID
     request_id: UUID
     status: Literal["in_progress"]
 
 
 class CompletedRequestStatus(BaseModel):
+    """Represent a successful terminal result inside the status endpoint response.
+
+    Its completed discriminator carries the full saved completion outcome.
+    """
+
     conversation_id: UUID
     request_id: UUID
     status: Literal["completed"]
@@ -200,6 +283,11 @@ class CompletedRequestStatus(BaseModel):
 
 
 class FailedRequestStatus(BaseModel):
+    """Represent failed or interrupted execution in a successful status lookup.
+
+    The nested error explains the turn failure; HTTP status retrieval can still return 200.
+    """
+
     conversation_id: UUID
     request_id: UUID
     status: Literal["failed", "interrupted"]

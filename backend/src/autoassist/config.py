@@ -20,10 +20,20 @@ NonEmptyText = Annotated[
 
 
 class ConfigurationError(RuntimeError):
-    """Raised when server-owned configuration is invalid."""
+    """Signal invalid server-owned configuration to startup/import callers.
+
+    The exception prevents using partially validated settings and is distinct from a customer
+    request validation error.
+    """
 
 
 class ConnectionConfig(BaseModel):
+    """Describe one configured provider connection.
+
+    Pydantic validates provider, model, and the name of an environment variable holding
+    credentials; the secret itself is not stored here.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     provider: Literal["xai", "google", "openai"]
@@ -34,6 +44,11 @@ class ConnectionConfig(BaseModel):
 
 
 class DealershipConfig(BaseModel):
+    """Describe a configured dealership and its default connection name.
+
+    RuntimeConfig checks cross-record uniqueness and that this connection exists.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     slug: NonEmptyText
@@ -42,6 +57,12 @@ class DealershipConfig(BaseModel):
 
 
 class RuntimeConfig(BaseModel):
+    """Validate the complete connection/dealership configuration loaded at startup.
+
+    Reject unknown fields, duplicate normalized identifiers, and dangling connection
+    references before bootstrap.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     connections: dict[NonEmptyText, ConnectionConfig]
@@ -91,6 +112,12 @@ class RuntimeConfig(BaseModel):
 
 
 class Settings(BaseSettings):
+    """Load process settings from AUTOASSIST_ environment variables or defaults.
+
+    Holds the database URL and runtime configuration path; provider secrets are resolved
+    separately.
+    """
+
     model_config = SettingsConfigDict(env_prefix="AUTOASSIST_", extra="ignore")
 
     database_url: str = "postgresql+psycopg://autoassist:autoassist-dev@127.0.0.1:5432/autoassist"

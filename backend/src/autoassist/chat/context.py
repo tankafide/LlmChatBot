@@ -21,6 +21,12 @@ MAX_TOOL_RESULT_BYTES = 16 * 1024
 
 @dataclass(slots=True)
 class ChatDependencies:
+    """Own mutable evidence and budgets for one agent run.
+
+    Sequential tools share these records, search IDs, and safety state; no live database
+    session or uncommitted selection is published to other turns.
+    """
+
     inventory: InventoryService
     request: ChatRunRequest
     safety: SafetyService | None = None

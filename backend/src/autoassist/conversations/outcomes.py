@@ -39,11 +39,23 @@ def error_body(code: str, message: str) -> dict[str, object]:
 
 @dataclass(frozen=True, slots=True)
 class ConversationOutcome:
+    """Pair an HTTP status with a JSON-compatible public body for lifecycle results.
+
+    Used for acceptance, errors, and durable terminal replay; frozen attributes do not make
+    the nested body dictionary immutable.
+    """
+
     status_code: int
     body: dict[str, Any]
 
 
 class ConversationApplicationError(RuntimeError):
+    """Carry an expected lifecycle rejection or storage/configuration failure to HTTP handling.
+
+    The outcome attribute provides the response status/body; constructing the exception does
+    not persist or raise it.
+    """
+
     def __init__(self, status_code: int, code: str, message: str) -> None:
         """Attach a public HTTP outcome to an application exception.
 

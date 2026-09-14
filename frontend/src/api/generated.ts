@@ -178,7 +178,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AcceptedRequestResponse */
+        /**
+         * AcceptedRequestResponse
+         * @description Acknowledge durable admission with status in_progress and request identity.
+         *
+         *     It does not promise completion; clients poll the request status for the final outcome.
+         */
         AcceptedRequestResponse: {
             /**
              * Conversation Id
@@ -196,7 +201,12 @@ export interface components {
              */
             status: "in_progress";
         };
-        /** CompletedRequestStatus */
+        /**
+         * CompletedRequestStatus
+         * @description Represent a successful terminal result inside the status endpoint response.
+         *
+         *     Its completed discriminator carries the full saved completion outcome.
+         */
         CompletedRequestStatus: {
             /**
              * Conversation Id
@@ -215,7 +225,12 @@ export interface components {
              */
             status: "completed";
         };
-        /** ConversationHistoryResponse */
+        /**
+         * ConversationHistoryResponse
+         * @description Expose a page of durable conversation history and current selection.
+         *
+         *     next_after_sequence is null at the end; history includes admitted unsuccessful user turns.
+         */
         ConversationHistoryResponse: {
             /**
              * Conversation Id
@@ -229,7 +244,12 @@ export interface components {
             /** Selected Vehicle Id */
             selected_vehicle_id: string | null;
         };
-        /** ConversationMessageResponse */
+        /**
+         * ConversationMessageResponse
+         * @description Expose a saved user or assistant message with server sequence and request status.
+         *
+         *     A failed/interrupted user message remains visible even when no assistant reply exists.
+         */
         ConversationMessageResponse: {
             /**
              * Created At
@@ -263,7 +283,12 @@ export interface components {
             /** Text */
             text: string;
         };
-        /** ConversationResponse */
+        /**
+         * ConversationResponse
+         * @description Expose the created or recovered conversation identity and public selection field.
+         *
+         *     Provider configuration and model replay stay internal.
+         */
         ConversationResponse: {
             /**
              * Created At
@@ -283,7 +308,13 @@ export interface components {
             /** Selected Vehicle Id */
             selected_vehicle_id: string | null;
         };
-        /** CreateConversationRequest */
+        /**
+         * CreateConversationRequest
+         * @description Identify a conversation-creation attempt independently of message submission.
+         *
+         *     Reusing creation_id within a dealership recovers the same conversation after an uncertain
+         *     response.
+         */
         CreateConversationRequest: {
             /**
              * Creation Id
@@ -291,12 +322,19 @@ export interface components {
              */
             creation_id: string;
         };
-        /** DealershipListResponse */
+        /**
+         * DealershipListResponse
+         * @description Wrap the publicly listed dealership records; items may be empty.
+         */
         DealershipListResponse: {
             /** Items */
             items: components["schemas"]["DealershipResponse"][];
         };
-        /** DealershipResponse */
+        /**
+         * DealershipResponse
+         * @description Expose a dealership UUID, configured slug, and display name without internal connection
+         *     settings.
+         */
         DealershipResponse: {
             /**
              * Id
@@ -308,18 +346,31 @@ export interface components {
             /** Slug */
             slug: string;
         };
-        /** ErrorDetail */
+        /**
+         * ErrorDetail
+         * @description Carry a public machine-readable error code and human-readable message.
+         *
+         *     Consumers use the code to distinguish retry, rejection, and terminal failure behavior.
+         */
         ErrorDetail: {
             /** Code */
             code: string;
             /** Message */
             message: string;
         };
-        /** ErrorEnvelope */
+        /**
+         * ErrorEnvelope
+         * @description Wrap a public application error under the error key for consistent HTTP handling.
+         */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorDetail"];
         };
-        /** FailedRequestStatus */
+        /**
+         * FailedRequestStatus
+         * @description Represent failed or interrupted execution in a successful status lookup.
+         *
+         *     The nested error explains the turn failure; HTTP status retrieval can still return 200.
+         */
         FailedRequestStatus: {
             /**
              * Conversation Id
@@ -343,19 +394,35 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** HealthResponse */
+        /**
+         * HealthResponse
+         * @description Represent the successful storage health response.
+         *
+         *     It does not claim external model or NHTSA availability.
+         */
         HealthResponse: {
             /** Status */
             status: string;
         };
-        /** InventoryPageResponse */
+        /**
+         * InventoryPageResponse
+         * @description Carry one public inventory page and its continuation UUID.
+         *
+         *     next_after is null at the end; an empty items list is a valid search result.
+         */
         InventoryPageResponse: {
             /** Items */
             items: components["schemas"]["VehicleResponse"][];
             /** Next After */
             next_after: string | null;
         };
-        /** SubmitMessageRequest */
+        /**
+         * SubmitMessageRequest
+         * @description Validate one immutable client request ID and its message text.
+         *
+         *     Whitespace-only text is rejected without trimming valid payloads, preserving equality for
+         *     same-ID retries.
+         */
         SubmitMessageRequest: {
             /**
              * Request Id
@@ -365,7 +432,13 @@ export interface components {
             /** Text */
             text: string;
         };
-        /** SubmitMessageResponse */
+        /**
+         * SubmitMessageResponse
+         * @description Represent the stored completed-turn response used for terminal replay.
+         *
+         *     Includes both messages and resulting selection; new asynchronous admission is represented
+         *     separately.
+         */
         SubmitMessageResponse: {
             assistant_message: components["schemas"]["ConversationMessageResponse"];
             /**
@@ -396,7 +469,13 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /** VehicleDetailResponse */
+        /**
+         * VehicleDetailResponse
+         * @description Extend the public vehicle summary with supported specifications.
+         *
+         *     Unknown optional facts remain null so clients cannot mistake missing data for confirmed
+         *     values.
+         */
         VehicleDetailResponse: {
             /** Body Type */
             body_type: string | null;
@@ -430,7 +509,12 @@ export interface components {
             /** Year */
             year: number;
         };
-        /** VehicleResponse */
+        /**
+         * VehicleResponse
+         * @description Expose an inventory summary with decimal price text and dealership-local stock number.
+         *
+         *     Nullable price/body fields represent unknown inventory data, not zero or empty facts.
+         */
         VehicleResponse: {
             /** Body Type */
             body_type: string | null;

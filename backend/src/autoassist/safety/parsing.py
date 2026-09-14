@@ -30,10 +30,21 @@ EXTRA_KEYS = (
 
 
 class InvalidResponse(ValueError):
+    """Reject upstream data whose shape, identity, or values cannot be trusted.
+
+    SafetyService treats this as unavailable evidence rather than a successful empty lookup.
+    """
+
     pass
 
 
 class ResponseLimit(InvalidResponse):
+    """Distinguish an oversized upstream record collection from other invalid data.
+
+    It is an InvalidResponse subtype so safety workflows can handle both while preserving the
+    response_limit reason.
+    """
+
     pass
 
 

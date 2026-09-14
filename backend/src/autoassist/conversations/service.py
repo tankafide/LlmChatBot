@@ -36,10 +36,14 @@ MAX_REPLAY_UNIT_BYTES = MAX_HISTORY_BYTES
 MAX_PUBLIC_REPLY_CHARS = 8_000
 
 
-# Reading path: submit -> admission commit -> tracked _execute task -> completion.
-# The HTTP request waits only for admission; status/history expose the durable result.
-# Store calls run in worker threads so synchronous SQL does not block the event loop.
 class ConversationService:
+    """Own the async message lifecycle from HTTP admission through durable settlement.
+
+    Track admissions and background turns separately, enforce local capacity, and call
+    synchronous store units in threads. Admission returns before provider work completes;
+    PostgreSQL owns cross-worker request state.
+    """
+
     def __init__(
         self,
         store: ConversationStore,

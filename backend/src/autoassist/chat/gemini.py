@@ -18,7 +18,11 @@ from autoassist.observability import current_turn
 
 
 class GeminiModel(GoogleModel):
-    """Retry rejected generations, never a whole agent turn or executed tools."""
+    """Retry rejected generations, never a whole agent turn or executed tools.
+
+    Adds bounded handling for Gemini transient HTTP errors while the surrounding runner owns
+    the total deadline.
+    """
 
     async def request(
         self,
@@ -65,6 +69,12 @@ class GeminiModel(GoogleModel):
 
 
 class GeminiSchemaTransformer(GoogleJsonSchemaTransformer):
+    """Adapt output/tool JSON schemas to Gemini limitations.
+
+    Moves array-size guidance into descriptions while local Pydantic validation continues
+    enforcing the original bounds.
+    """
+
     def transform(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Adapt a JSON schema to Gemini while retaining local validation limits.
 

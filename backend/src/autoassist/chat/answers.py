@@ -27,7 +27,11 @@ AllowedField = Literal[
 
 
 class AnswerVehicle(BaseModel):
-    """An evidenced vehicle and the inventory fields the customer requested."""
+    """Reference one authoritative vehicle and the fields to render.
+
+    The model supplies an evidence UUID and supported field names, never factual values;
+    application rendering supplies the facts.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -40,7 +44,12 @@ class AnswerVehicle(BaseModel):
 
 
 class GroundedAnswer(BaseModel):
-    """Choose a grounded response. The application renders facts and owns vehicle selection."""
+    """Choose a grounded response.
+
+    The application renders facts and owns vehicle selection. This model-facing output schema
+    names intent and evidence; validate_answer checks semantic agreement after structural
+    validation.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -69,7 +78,11 @@ class GroundedAnswer(BaseModel):
 
 
 class InvalidAnswerError(ValueError):
-    """A proposed answer is inconsistent with the current retrieved evidence."""
+    """Reject a structurally valid answer that disagrees with current evidence or subject.
+
+    The runner converts this into bounded ModelRetry feedback rather than rendering
+    unsupported facts.
+    """
 
 
 def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedAnswer:

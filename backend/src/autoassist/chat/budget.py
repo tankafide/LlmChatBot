@@ -41,9 +41,13 @@ def request_bytes(
     )
 
 
-# Wrap each provider request, including model repair attempts, with the same
-# input-size boundary and instrumentation.
 class BudgetedModel(WrapperModel):
+    """Wrap every provider request with input-size enforcement and operational metrics.
+
+    It normalizes external model failures into domain errors; tools and durable lifecycle
+    settlement remain outside this boundary.
+    """
+
     async def request(
         self,
         messages: list[ModelMessage],

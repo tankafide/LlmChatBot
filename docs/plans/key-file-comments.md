@@ -33,3 +33,9 @@ Document remaining meaningful functions throughout backend/src/autoassist, inclu
 Status: 79 new docstrings added across 25 modules and five existing short docstrings expanded. All 214 application-source functions/methods now have docstrings. AST comparison confirms code outside docstrings is unchanged. Ruff, mypy, and API documentation drift checks pass; 54 focused deterministic configuration/import/safety-matching/evaluation/provider tests passed. No live provider calls or development storage changes.
 
 Convention: concise imperative summary; explain caller/purpose and side effects where useful. Use Google-style Args, Returns, and Raises sections when their semantics need explanation. Do not duplicate type annotations just to fill sections; document sentinel values, lifecycle ownership, commit points, and meaningful failures. Leave trivial generated data holders without boilerplate method documentation.
+
+## Class hover documentation
+
+Document every backend application class with a first-statement docstring describing purpose, usage, state, and important invariants. Move existing class-leading comments into the class documentation. Pydantic class descriptions affect OpenAPI/model schemas; regenerate API documentation and run focused checks before committing and pushing as requested. Correct the discovered normalize_text docstring to describe trimming accurately.
+
+Status: complete. All 91 classes and 214 functions have docstrings. AST comparison excluding docstrings confirms unchanged executable code. Ruff, mypy, frontend typecheck, API generation/drift checks, and 38 focused model/schema/configuration/safety/conversation tests passed. Class descriptions were synchronized into generated API documentation; no live calls or development database changes.

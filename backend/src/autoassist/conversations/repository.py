@@ -21,13 +21,21 @@ from autoassist.db.models import ChatRequest, Conversation, Dealership, Message,
 
 
 class ConversationNotFoundError(LookupError):
+    """Signal that scoped admission found no conversation to insert against.
+
+    The store translates this repository condition into the public not_found application
+    error.
+    """
+
     pass
 
 
-# The store owns the transaction. ORM rows stay inside it; record helpers copy
-# values that callers can safely use after the session closes.
 class ConversationRepository:
-    """Scoped SQL and ORM mutations; the caller owns session lifetime and commit."""
+    """Perform scoped SQL and ORM mutations inside caller-owned transactions.
+
+    ConversationStore owns session lifetime and commit; row locks and schema constraints
+    coordinate competing workers. Plain record helpers detach values for async callers.
+    """
 
     def get_dealership(self, session: Session, dealership_id: str) -> Dealership | None:
         """Return the attached dealership ORM row, or None if absent; the caller owns the session.

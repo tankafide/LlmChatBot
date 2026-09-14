@@ -20,6 +20,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
+    """Provide the shared SQLAlchemy declarative registry and schema metadata.
+
+    ORM table classes inherit it so initialization and storage checks use one model
+    definition.
+    """
+
     pass
 
 
@@ -32,6 +38,12 @@ def new_uuid() -> str:
 
 
 class Dealership(Base):
+    """Persist a dealership identity and its default provider connection name.
+
+    Inventory/conversations reference this row; changing its default does not rewrite
+    connections pinned to existing conversations.
+    """
+
     __tablename__ = "dealerships"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
@@ -40,9 +52,13 @@ class Dealership(Base):
     default_connection: Mapped[str] = mapped_column(String(100), nullable=False)
 
 
-# Inventory has an internal UUID and a dealership-local source stock ID. Nullable
-# facts mean unknown; price_cents keeps stored currency arithmetic exact.
 class Vehicle(Base):
+    """Persist dealership-scoped inventory using an internal UUID and local stock ID.
+
+    Normalized search keys accompany display text, price uses integer cents, and nullable
+    facts remain unknown.
+    """
+
     __tablename__ = "vehicles"
     __table_args__ = (
         UniqueConstraint("dealership_id", "source_id", name="uq_vehicle_dealership_source"),
@@ -77,6 +93,13 @@ class Vehicle(Base):
 
 
 class Conversation(Base):
+    """Persist chat identity, pinned model configuration, selection, and message sequence
+    allocation.
+
+    The dealership/creation-ID uniqueness rule makes creation retries idempotent; ordinary
+    restarts preserve this row.
+    """
+
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
@@ -102,9 +125,14 @@ class Conversation(Base):
     next_message_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
-# A request tracks execution and retry identity separately from visible messages.
-# The user message survives failure; an assistant message exists only on completion.
 class ChatRequest(Base):
+    """Persist one admitted submission and its execution/replay outcome.
+
+    Unique client identity prevents duplicate turns; a partial unique index permits one active
+    request per conversation. Database-clock leases enable recovery and terminal fields
+    support retries without a new model call.
+    """
+
     __tablename__ = "chat_requests"
     __table_args__ = (
         # The browser ID is unique within its conversation. Payload equality is checked
@@ -167,6 +195,13 @@ class ChatRequest(Base):
 
 
 class Message(Base):
+    """Persist one visible user or assistant message with server-defined sequence.
+
+    Composite foreign keys bind it to the correct conversation/request and uniqueness prevents
+    duplicate roles. Failed requests retain their user message without requiring an assistant
+    row.
+    """
+
     __tablename__ = "messages"
     __table_args__ = (
         # A message must reference a request in the same conversation, not merely

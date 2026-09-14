@@ -19,6 +19,11 @@ from autoassist.safety.records import CrashResult, Identity, Presentation, Recal
 
 
 class CrashProvenance(TypedDict):
+    """Type the common keyword fields used to construct crash results.
+
+    This TypedDict supports static checking only; CrashResult performs runtime validation.
+    """
+
     inventory_vehicle_id: str
     stock_id: str
     lookup_identity: Identity
@@ -27,15 +32,25 @@ class CrashProvenance(TypedDict):
 
 
 @dataclass(slots=True)
-# Per-turn state: one vehicle, a shared external-call budget, and typed results.
-# Failures are cached too so repeated tools do not refetch within the same turn.
 class SafetyRun:
+    """Own one turn safety subject, shared lookup budget, and cached branch results.
+
+    Cache unavailable outcomes too so repeated tools do not refetch within the turn; a run
+    cannot switch inventory vehicles.
+    """
+
     budget: LookupBudget
     vehicle_id: str | None = None
     results: dict[str, RecallResult | CrashResult] = field(default_factory=dict)
 
 
 class SafetyService:
+    """Coordinate recall and crash workflows over the bounded NHTSA client.
+
+    Match inventory identity, preserve ambiguity/unavailable states, and produce validated
+    evidence; the chat runner renders it and persistence owns follow-up context.
+    """
+
     def __init__(self, client: NhtsaClient) -> None:
         """Attach the NHTSA transport adapter. Return None; requests and caches belong to
         individual SafetyRun instances.

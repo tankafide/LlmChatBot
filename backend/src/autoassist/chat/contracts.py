@@ -6,6 +6,12 @@ from typing import Literal, Protocol
 
 @dataclass(frozen=True, slots=True)
 class ChatRunRequest:
+    """Carry immutable application context into one model turn.
+
+    Includes current text, selected/list vehicle IDs, completed replay units, and an optional
+    monotonic deadline; browser-supplied history is not trusted evidence.
+    """
+
     dealership_id: str
     conversation_id: str
     request_id: str
@@ -18,6 +24,12 @@ class ChatRunRequest:
 
 @dataclass(frozen=True, slots=True)
 class ChatRunResult:
+    """Carry the rendered answer and proposed context changes back to persistence.
+
+    None presented_vehicle_ids means keep the old list; an empty tuple clears it. Selection
+    actions become durable only with successful completion.
+    """
+
     reply: str
     replay_json: str
     presented_vehicle_ids: tuple[str, ...] | None = None
@@ -26,6 +38,12 @@ class ChatRunResult:
 
 
 class ChatRunner(Protocol):
+    """Define the async run/close contract consumed by conversation orchestration.
+
+    Provider adapters and test fakes can implement it without exposing provider-specific SDK
+    details to the service.
+    """
+
     async def run(self, request: ChatRunRequest) -> ChatRunResult:
         """Produce a grounded result for one admitted turn.
 
@@ -47,8 +65,19 @@ class ChatRunner(Protocol):
 
 
 class ChatProviderError(RuntimeError):
+    """Signal a provider or grounded-output failure that prevents completing a turn.
+
+    Conversation settlement converts it into a sanitized failed outcome.
+    """
+
     pass
 
 
 class ChatProviderTimeoutError(ChatProviderError):
+    """Distinguish provider timeout from other provider failures.
+
+    It shares the failure hierarchy while allowing lifecycle settlement to return a
+    timeout-specific outcome.
+    """
+
     pass

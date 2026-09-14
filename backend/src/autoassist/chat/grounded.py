@@ -80,9 +80,13 @@ Scope:
 """
 
 
-# Convert one durable request into a bounded model/tool run. The model chooses
-# a typed answer; answers.py validates its evidence and renders factual values.
 class PydanticChatRunner:
+    """Orchestrate one bounded model/tool run from application-owned context.
+
+    Refresh evidence, validate typed answers, render facts, and serialize complete replay. The
+    conversation store owns admission, transactions, and durable selection.
+    """
+
     def __init__(
         self,
         model: Model,

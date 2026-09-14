@@ -7,21 +7,44 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Record(BaseModel):
+    """Provide strict, frozen Pydantic safety records that reject extra fields.
+
+    Subclasses validate evidence boundaries; frozen field assignment does not recursively
+    freeze nested dictionaries.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
 class Identity(Record):
+    """Identify a year/make/model safety lookup from inventory data.
+
+    This is not a VIN identity and does not establish vehicle-specific recall repair status.
+    """
+
     year: int
     make: str
     model: str
 
 
 class Candidate(Record):
+    """Represent one discovered NHTSA crash variant with its numeric upstream ID and bounded
+    description.
+
+    It is distinct from the inventory vehicle UUID.
+    """
+
     vehicle_id: int = Field(gt=0)
     description: str = Field(min_length=1, max_length=300)
 
 
 class Presentation(Record):
+    """Persist the bounded NHTSA variant menu actually shown for one inventory vehicle.
+
+    Includes lookup identity, timestamp, displayed candidates, and full candidate count for
+    later choice resolution.
+    """
+
     inventory_vehicle_id: str
     lookup_identity: Identity
     candidates: tuple[Candidate, ...] = Field(min_length=1, max_length=5)
@@ -43,6 +66,12 @@ class Presentation(Record):
 
 
 class PresentationUpdate(Record):
+    """Describe a keep, clear, or set update to pending safety choices.
+
+    Only set carries a Presentation; successful completion persists this instruction alongside
+    model replay.
+    """
+
     action: Literal["keep", "clear", "set"]
     presentation: Presentation | None = None
 
@@ -59,6 +88,12 @@ class PresentationUpdate(Record):
 
 
 class Category(Record):
+    """Represent rated, not_rated, missing, or invalid crash data without conflating uncertainty
+    with zero stars.
+
+    Only rated carries a validated 1–5 star value.
+    """
+
     status: Literal["rated", "not_rated", "missing", "invalid"]
     stars: int | None = Field(default=None, ge=1, le=5)
 
@@ -75,6 +110,12 @@ class Category(Record):
 
 
 class Campaign(Record):
+    """Carry validated recall campaign details and optional urgent flags.
+
+    clipped_fields records excerpted source fields; absent optional data does not prove
+    absence of a concern.
+    """
+
     campaign_number: str
     component: str | None
     summary: str | None
@@ -88,6 +129,11 @@ class Campaign(Record):
 
 
 class Provenance(Record):
+    """Bind safety evidence to inventory identity, NHTSA source URL, and attempt/retrieval times.
+
+    A missing retrieved_at distinguishes an attempt from confirmed retrieval.
+    """
+
     inventory_vehicle_id: str
     stock_id: str
     lookup_identity: Identity
@@ -109,6 +155,12 @@ Reason = Literal[
 
 
 class RecallResult(Provenance):
+    """Represent available, verified-empty, or unavailable recall evidence with provenance.
+
+    Counts track displayed/omitted campaigns and urgent flags; validation prevents successful
+    data from being mixed with an unavailable status.
+    """
+
     status: Literal["available", "empty", "unavailable"]
     reason: Reason | None = None
     total_count: int | None = Field(default=None, ge=0)
@@ -138,6 +190,12 @@ class RecallResult(Provenance):
 
 
 class CrashResult(Provenance):
+    """Represent crash ratings, ambiguity, no record, or unavailable evidence with provenance.
+
+    Categories distinguish missing/unrated/invalid values; validators align status with
+    summary data. Concern coverage remains explicitly incomplete.
+    """
+
     status: Literal[
         "available", "partial", "unrated", "no_ratings", "no_record", "ambiguous", "unavailable"
     ]

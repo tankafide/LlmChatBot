@@ -33,10 +33,14 @@ from autoassist.db.database import SessionFactory
 from autoassist.observability import event
 
 
-# Each method is a complete synchronous database unit. begin() commits on normal
-# exit and rolls back on error; repository helpers never commit independently.
-# Return plain records so async callers do not trigger lazy ORM database access.
 class ConversationStore:
+    """Own short synchronous conversation database units.
+
+    Each operation opens/closes its session and commits writes atomically; repository helpers
+    do not commit. A local lock serializes selected writes within this instance, while
+    database constraints and row locks coordinate processes.
+    """
+
     def __init__(
         self,
         session_factory: SessionFactory,

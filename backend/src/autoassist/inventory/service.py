@@ -13,14 +13,31 @@ from autoassist.inventory.repository import InventoryRepository
 
 
 class InventoryNotFoundError(LookupError):
+    """Signal that a requested dealership or scoped vehicle does not exist.
+
+    HTTP routes return not_found; tools can use this condition to ask for clarification.
+    """
+
     pass
 
 
 class StorageUnavailableError(RuntimeError):
+    """Signal a recognized inventory database availability failure.
+
+    Services preserve unexpected SQL defects as their original exceptions rather than
+    disguising them as a temporary outage.
+    """
+
     pass
 
 
 class InventoryService:
+    """Provide synchronous inventory reads shared by routes and model tools.
+
+    Own independent read sessions, materialize records, enforce dealership existence, and
+    translate recognized database outages into a domain error.
+    """
+
     def __init__(self, session_factory: SessionFactory, repository: InventoryRepository) -> None:
         """Wire the shared inventory read service.
 

@@ -18,7 +18,11 @@ SessionFactory = sessionmaker[Session]
 
 
 class SchemaMismatchError(RuntimeError):
-    """Existing storage cannot safely serve this application version."""
+    """Stop startup/import when existing storage fails compatibility checks.
+
+    Callers must explicitly recreate incompatible development storage; this error does not
+    trigger automatic migration or data deletion.
+    """
 
 
 def _ensure_sqlite_parent(database_url: str) -> None:

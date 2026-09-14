@@ -44,9 +44,14 @@ async def database_write[**P, T](function: Callable[P, T], *args: P.args, **kwar
         raise
 
 
-# A process-local capacity bound, separate from database conversation ownership.
-# Reject excess work immediately rather than accumulating an unbounded wait queue.
 class ActiveTurnLimiter:
+    """Bound concurrent owned turns in one server process.
+
+    Admission acquires capacity and exactly one owner releases it; an idle event supports
+    graceful shutdown. Database constraints separately coordinate each conversation across
+    workers.
+    """
+
     def __init__(self, limit: int) -> None:
         """Initialize a process-local slot counter, lock, and idle event. Return None; initially
         all capacity is available.

@@ -29,14 +29,28 @@ EXPECTED_COLUMNS = (
 
 
 class InventoryImportError(RuntimeError):
-    """Base class for safe, actionable import failures."""
+    """Group expected inventory import failures for actionable CLI reporting.
+
+    Subclasses distinguish invalid source data from an unavailable dealership target.
+    """
 
 
 class InventoryValidationError(InventoryImportError):
+    """Reject unreadable, malformed, empty, or out-of-bounds source inventory before import.
+
+    Parsing helpers include row/field context where available; no partial CSV import is
+    accepted.
+    """
+
     pass
 
 
 class DealershipNotFoundError(InventoryImportError):
+    """Reject imports whose target dealership is missing from configuration or storage.
+
+    Import does not silently create an arbitrary requested dealership.
+    """
+
     pass
 
 
@@ -229,6 +243,12 @@ def parse_inventory_csv(
 
 
 class InventoryImportService:
+    """Commit validated inventory records as one dealership-scoped transaction.
+
+    The CSV parser owns validation, the repository stages changes, and this service commits or
+    rolls back the whole import.
+    """
+
     def __init__(
         self,
         session_factory: SessionFactory,
