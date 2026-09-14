@@ -48,6 +48,11 @@ class InventoryPage:
 
 
 def normalize_text(value: str) -> str:
+    """Produce the shared inventory search/import comparison key.
+
+    Return whitespace-collapsed, case-folded text for consistent matching while retaining
+    original display text elsewhere; no I/O or record mutation occurs.
+    """
     return value.strip().casefold()
 
 

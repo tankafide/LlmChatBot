@@ -6,7 +6,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Dealerships */
+        /**
+         * List Dealerships
+         * @description Return the configured dealership list, or a 503 JSON error if storage is unavailable.
+         *
+         *     Called for GET /dealerships.
+         */
         get: operations["list_dealerships_dealerships_get"];
         put?: never;
         post?: never;
@@ -25,7 +30,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Conversation */
+        /**
+         * Create Conversation
+         * @description Create or recover a conversation using creation_id. Return its public identity under HTTP
+         *     201, or the application error response; no message is submitted here.
+         *
+         *     Called for POST /dealerships/{dealership_id}/conversations, normally before the first
+         *     message of a new chat.
+         */
         post: operations["create_conversation_dealerships__dealership_id__conversations_post"];
         delete?: never;
         options?: never;
@@ -40,10 +52,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Conversation Messages */
+        /**
+         * Get Conversation Messages
+         * @description Return a page of durable messages and a continuation sequence (None at the end), or a JSON
+         *     application error. Failed user turns remain visible. History is the durable user-visible
+         *     record, including failed user turns. It is distinct from the completed tool/model replay
+         *     supplied to the LLM.
+         *
+         *     Called when the browser loads, paginates, or reconciles conversation history.
+         */
         get: operations["get_conversation_messages_dealerships__dealership_id__conversations__conversation_id__messages_get"];
         put?: never;
-        /** Submit Message */
+        /**
+         * Submit Message
+         * @description Submit immutable request ID/text to the lifecycle service. Return JSON with 202 acceptance,
+         *     a replayed terminal outcome, or an application error status. Chat routes await async
+         *     orchestration. Submission can return 202 for admitted work or a stored terminal outcome for
+         *     a retry; the service chooses that status.
+         *
+         *     Called for every POST to a conversation messages collection, including retries. The
+         *     conversation must already exist.
+         */
         post: operations["submit_message_dealerships__dealership_id__conversations__conversation_id__messages_post"];
         delete?: never;
         options?: never;
@@ -58,7 +87,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Request Status */
+        /**
+         * Get Request Status
+         * @description Return an uncached JSON status snapshot, including a terminal outcome when settled. Missing
+         *     requests/storage failures return the application error response.
+         *
+         *     Called when the browser polls GET requests/{request_id} for an admitted or uncertain turn.
+         */
         get: operations["get_request_status_dealerships__dealership_id__conversations__conversation_id__requests__request_id__get"];
         put?: never;
         post?: never;
@@ -75,7 +110,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search Inventory */
+        /**
+         * Search Inventory
+         * @description Translate validated query filters and return a vehicle page with its next cursor. Return 404
+         *     for missing scope or 503 for unavailable storage.
+         *
+         *     Called for GET /dealerships/{dealership_id}/vehicles after query validation.
+         */
         get: operations["search_inventory_dealerships__dealership_id__vehicles_get"];
         put?: never;
         post?: never;
@@ -92,7 +133,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Vehicle */
+        /**
+         * Get Vehicle
+         * @description Return one dealership-scoped vehicle detail, or a 404/503 JSON error for missing
+         *     inventory/unavailable storage.
+         *
+         *     Called for GET /dealerships/{dealership_id}/vehicles/{vehicle_id}.
+         */
         get: operations["get_vehicle_dealerships__dealership_id__vehicles__vehicle_id__get"];
         put?: never;
         post?: never;
@@ -109,7 +156,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Probe required storage tables. Return an ok health model or a 503 error response for
+         *     recognized storage outages; unexpected database defects propagate. This synchronous route
+         *     checks storage without depending on paid/external APIs. FastAPI runs ordinary def handlers
+         *     in its thread pool for blocking database work.
+         *
+         *     Called for GET /health.
+         */
         get: operations["health_health_get"];
         put?: never;
         post?: never;

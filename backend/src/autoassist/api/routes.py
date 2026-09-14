@@ -37,6 +37,9 @@ from autoassist.inventory.service import (
     StorageUnavailableError,
 )
 
+# HTTP boundary: schemas validate inputs, services own behavior, and these routes
+# translate application records/errors into the public contract. Dealership IDs
+# provide query scope; these routes do not implement authentication.
 router = APIRouter()
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"model": ErrorEnvelope, "description": "Dealership or vehicle not found"},
@@ -53,20 +56,39 @@ CHAT_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def _service(request: Request) -> InventoryService:
+    """Return the inventory service installed on this app during startup; no database work occurs
+    here.
+
+    Used by inventory HTTP handlers to retrieve the startup-created service.
+    """
     return cast(InventoryService, request.app.state.inventory_service)
 
 
 def _conversation_service(request: Request) -> ConversationService:
+    """Return the conversation service installed on this app during startup.
+
+    Used by conversation HTTP handlers to retrieve the startup-created service.
+    """
     return cast(ConversationService, request.app.state.conversation_service)
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    """Build and return a JSONResponse with the supplied HTTP status and public error envelope;
+    this helper does not raise the error.
+
+    Used by inventory/health handlers when translating an expected failure into HTTP.
+    """
     return JSONResponse(
         status_code=status_code, content={"error": {"code": code, "message": message}}
     )
 
 
 def _vehicle_response(record: VehicleRecord) -> VehicleResponse:
+    """Convert an inventory record into the public summary schema. Return decimal price text, or a
+    null price when inventory has no value.
+
+    Used by inventory search responses and the detail-response helper.
+    """
     price = (
         None
         if record.price_cents is None
@@ -84,6 +106,11 @@ def _vehicle_response(record: VehicleRecord) -> VehicleResponse:
 
 
 def _vehicle_detail_response(record: VehicleRecord) -> VehicleDetailResponse:
+    """Return the public vehicle detail schema by combining the summary with supported
+    specifications; unknown fields remain null.
+
+    Used by the single-vehicle HTTP handler.
+    """
     summary = _vehicle_response(record)
     return VehicleDetailResponse(
         **summary.model_dump(),
@@ -99,6 +126,13 @@ def _vehicle_detail_response(record: VehicleRecord) -> VehicleDetailResponse:
 
 @router.get("/health", response_model=HealthResponse, responses={503: {"model": ErrorEnvelope}})
 def health(request: Request) -> HealthResponse | JSONResponse:
+    """Probe required storage tables. Return an ok health model or a 503 error response for
+    recognized storage outages; unexpected database defects propagate. This synchronous route
+    checks storage without depending on paid/external APIs. FastAPI runs ordinary def handlers
+    in its thread pool for blocking database work.
+
+    Called for GET /health.
+    """
     try:
         check_storage(request.app.state.session_factory)
     except OperationalError as exc:
@@ -112,6 +146,10 @@ def health(request: Request) -> HealthResponse | JSONResponse:
     "/dealerships", response_model=DealershipListResponse, responses={503: ERROR_RESPONSES[503]}
 )
 def list_dealerships(request: Request) -> DealershipListResponse | JSONResponse:
+    """Return the configured dealership list, or a 503 JSON error if storage is unavailable.
+
+    Called for GET /dealerships.
+    """
     try:
         records = _service(request).list_dealerships()
     except StorageUnavailableError:
@@ -133,6 +171,13 @@ def search_inventory(
     dealership_id: UUID,
     query: Annotated[InventoryQuery, Query()],
 ) -> InventoryPageResponse | JSONResponse:
+    """Translate validated query filters and return a vehicle page with its next cursor. Return 404
+    for missing scope or 503 for unavailable storage.
+
+    Called for GET /dealerships/{dealership_id}/vehicles after query validation.
+    """
+    # Convert public decimal prices to the integer-cent domain representation.
+    # The same inventory service also serves model tools, keeping search rules shared.
     filters = InventoryFilters(
         make=query.make,
         model=query.model,
@@ -164,6 +209,11 @@ def search_inventory(
 def get_vehicle(
     request: Request, dealership_id: UUID, vehicle_id: UUID
 ) -> VehicleDetailResponse | JSONResponse:
+    """Return one dealership-scoped vehicle detail, or a 404/503 JSON error for missing
+    inventory/unavailable storage.
+
+    Called for GET /dealerships/{dealership_id}/vehicles/{vehicle_id}.
+    """
     try:
         record = _service(request).get(str(dealership_id), str(vehicle_id))
     except InventoryNotFoundError:
@@ -182,6 +232,12 @@ def get_vehicle(
 async def create_conversation(
     request: Request, dealership_id: UUID, _payload: CreateConversationRequest
 ) -> ConversationResponse | JSONResponse:
+    """Create or recover a conversation using creation_id. Return its public identity under HTTP
+    201, or the application error response; no message is submitted here.
+
+    Called for POST /dealerships/{dealership_id}/conversations, normally before the first
+    message of a new chat.
+    """
     try:
         record = await _conversation_service(request).create(
             str(dealership_id), str(_payload.creation_id)
@@ -207,6 +263,14 @@ async def submit_message(
     conversation_id: UUID,
     payload: SubmitMessageRequest,
 ) -> JSONResponse:
+    """Submit immutable request ID/text to the lifecycle service. Return JSON with 202 acceptance,
+    a replayed terminal outcome, or an application error status. Chat routes await async
+    orchestration. Submission can return 202 for admitted work or a stored terminal outcome for
+    a retry; the service chooses that status.
+
+    Called for every POST to a conversation messages collection, including retries. The
+    conversation must already exist.
+    """
     try:
         outcome = await _conversation_service(request).submit(
             str(dealership_id), str(conversation_id), str(payload.request_id), payload.text
@@ -224,6 +288,11 @@ async def submit_message(
 async def get_request_status(
     request: Request, dealership_id: UUID, conversation_id: UUID, request_id: UUID
 ) -> JSONResponse:
+    """Return an uncached JSON status snapshot, including a terminal outcome when settled. Missing
+    requests/storage failures return the application error response.
+
+    Called when the browser polls GET requests/{request_id} for an admitted or uncertain turn.
+    """
     try:
         outcome = await _conversation_service(request).status(
             str(dealership_id), str(conversation_id), str(request_id)
@@ -233,6 +302,7 @@ async def get_request_status(
     return JSONResponse(
         status_code=outcome.status_code,
         content=outcome.body,
+        # Polling must observe current durable state rather than a cached active result.
         headers={"Cache-Control": "no-store"},
     )
 
@@ -249,6 +319,13 @@ async def get_conversation_messages(
     after_sequence: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ConversationHistoryResponse | JSONResponse:
+    """Return a page of durable messages and a continuation sequence (None at the end), or a JSON
+    application error. Failed user turns remain visible. History is the durable user-visible
+    record, including failed user turns. It is distinct from the completed tool/model replay
+    supplied to the LLM.
+
+    Called when the browser loads, paginates, or reconciles conversation history.
+    """
     try:
         page = await _conversation_service(request).history(
             str(dealership_id), str(conversation_id), after_sequence, limit

@@ -8,6 +8,13 @@ from autoassist.db.models import Dealership
 
 
 def bootstrap_dealerships(session_factory: SessionFactory, config: RuntimeConfig) -> None:
+    """Synchronize configured dealership names and defaults without deleting history.
+
+    Called during startup/import inside one transaction. Insert missing dealerships and update
+    configured ones; retain removed entries if their connection still exists. Return None
+    after commit. Raise ConfigurationError for retained dealerships referencing missing
+    connections; database errors roll back the unit.
+    """
     desired = {item.slug: item for item in config.dealerships}
     connection_names = set(config.connections)
 

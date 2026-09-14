@@ -43,6 +43,12 @@ from autoassist.safety.service import SafetyService
 
 
 def load_labels(path: Path) -> list[ConversationLabel]:
+    """Load a bounded, uniquely identified conversation evaluation suite.
+
+    Used by both validation-only and live evaluation. Return validated labels; raise
+    validation/ValueError for bad data, duplicate IDs, or a count outside 15–25. File errors
+    propagate.
+    """
     cases = TypeAdapter(list[ConversationLabel]).validate_json(path.read_bytes())
     if not 15 <= len(cases) <= 25 or len({case.id for case in cases}) != len(cases):
         raise ValueError("suite requires 15–25 conversations with unique IDs")
@@ -50,7 +56,18 @@ def load_labels(path: Path) -> list[ConversationLabel]:
 
 
 def fixture_transport(mode: str) -> httpx.MockTransport:
+    """Return a deterministic NHTSA HTTP transport for evaluation scenarios.
+
+    Called for each evaluation conversation. Mode selects unavailable, ambiguous, or empty
+    fixtures; no live NHTSA request occurs.
+    """
+
     def respond(request: httpx.Request) -> httpx.Response:
+        """Supply a fixture response for one evaluation HTTP request.
+
+        Invoked by MockTransport. Return 503 in unavailable mode; otherwise return empty
+        recall data, ambiguous crash choices, or empty crash data according to mode/path.
+        """
         if mode == "unavailable":
             return httpx.Response(503)
         if "recalls" in request.url.path:
@@ -78,6 +95,11 @@ def fixture_transport(mode: str) -> httpx.MockTransport:
 
 
 def trace(replay: str) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, str]]:
+    """Extract tool behavior from a completed replay envelope.
+
+    Called after an evaluation turn succeeds. Return (tool calls, latest final answer, safety
+    statuses) via trace_messages; corrupt JSON or library message data raises.
+    """
     envelope = json.loads(replay)
     messages = ModelMessagesTypeAdapter.validate_json(envelope["messages_json"])
     return trace_messages(messages)
@@ -86,6 +108,12 @@ def trace(replay: str) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, 
 def trace_messages(
     messages: list[ModelMessage],
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, str]]:
+    """Summarize model calls and tool evidence for scoring or failure reports.
+
+    Called on completed or captured partial messages. Return ordered non-final tool calls, the
+    latest final-result arguments (empty if absent), and branch statuses. This describes
+    observed messages, not proof of execution success.
+    """
     calls: list[dict[str, Any]] = []
     answer: dict[str, Any] = {}
     safety: dict[str, str] = {}
@@ -105,7 +133,13 @@ def trace_messages(
 
 
 def repair_feedback(messages: list[ModelMessage]) -> list[dict[str, Any]]:
-    """Bounded application/schema feedback for local reports; never operational logs."""
+    """Extract bounded model repair feedback for the local evaluation report.
+
+    Called after each evaluation turn, including failures. Return at most twelve feedback
+    entries, clipping string reasons and structured validation details. Return an empty
+    list when no retry feedback exists. These report details are separate from payload-free
+    operational logs and may contain request-specific validation content.
+    """
     feedback: list[dict[str, Any]] = []
     for message in messages:
         for part in message.parts:
@@ -137,6 +171,14 @@ async def evaluate(
     repeats: int,
     case_id: str | None = None,
 ) -> dict[str, Any]:
+    """Run labeled conversations against a real configured model using disposable inventory.
+
+    Called only by the live CLI path or an explicit caller. Import the supplied CSV into
+    temporary SQLite, mock NHTSA, and repeat scoped cases with retained context. Return a
+    report with per-turn checks, metrics, hashes, and aggregate results. Turn failures become
+    failed rows; setup/cleanup errors propagate. This function itself has no --live guard and
+    makes billed model calls.
+    """
     labels = load_labels(suite)
     if case_id is not None:
         labels = [case for case in labels if case.id == case_id]
@@ -299,6 +341,12 @@ async def evaluate(
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate a nonempty sequence of evaluation turn reports.
+
+    Called after live evaluation. Return pass rates, category counts, latency percentiles, and
+    call totals. Required row keys and at least one row are caller preconditions;
+    malformed/empty inputs raise rather than producing invented statistics.
+    """
     latencies = sorted(row["latency_ms"] for row in rows)
     categories = sorted({row["category"] for row in rows})
     return {

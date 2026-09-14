@@ -9,6 +9,12 @@ from autoassist.inventory.service import InventoryService
 def create_openai_runner(
     model_name: str, api_key: str, inventory: InventoryService
 ) -> PydanticChatRunner:
+    """Construct an OpenAI Responses runner with explicit timeout and no SDK retries.
+
+    Called by startup or live evaluation. Return a grounded runner that closes its client on
+    shutdown. Construction wires dependencies; the provider is invoked only by a subsequent
+    run.
+    """
     client = AsyncOpenAI(api_key=api_key, timeout=30.0, max_retries=0)
     model = OpenAIResponsesModel(
         model_name,

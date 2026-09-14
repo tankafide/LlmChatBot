@@ -50,6 +50,11 @@ class RuntimeConfig(BaseModel):
     @field_validator("connections", mode="before")
     @classmethod
     def reject_normalized_connection_collisions(cls, value: object) -> object:
+        """Reject connection keys that would collide after whitespace trimming.
+
+        Pydantic calls this before parsing connections. Return the original input for normal
+        field validation; raise ValueError on a duplicate trimmed name.
+        """
         if isinstance(value, dict):
             names: set[str] = set()
             for key in value:
@@ -62,6 +67,11 @@ class RuntimeConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_references_and_duplicates(self) -> RuntimeConfig:
+        """Validate dealership uniqueness and connection references after field parsing.
+
+        Pydantic calls this when building RuntimeConfig. Return self on success; raise
+        ValueError for case-insensitive duplicate slugs/names or unknown default connections.
+        """
         slugs: set[str] = set()
         names: set[str] = set()
         for dealership in self.dealerships:
@@ -88,6 +98,11 @@ class Settings(BaseSettings):
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build a JSON object without silently accepting duplicate keys.
+
+    Used as json.loads object_pairs_hook while loading configuration. Return the mapping;
+    raise ConfigurationError if any key repeats within an object.
+    """
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
@@ -97,6 +112,12 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load_runtime_config(path: Path) -> RuntimeConfig:
+    """Load and validate the server-owned dealership/provider configuration.
+
+    Called by startup, import, and evaluation entry points. Return RuntimeConfig after
+    checking JSON structure, duplicate keys, and references. Raise ConfigurationError for
+    unreadable files or invalid configuration; no database work occurs.
+    """
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw, object_pairs_hook=_reject_duplicate_keys)

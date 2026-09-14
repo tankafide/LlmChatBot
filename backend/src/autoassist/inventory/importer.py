@@ -41,11 +41,21 @@ class DealershipNotFoundError(InventoryImportError):
 
 
 def _validation_error(row: int | None, field: str, message: str) -> InventoryValidationError:
+    """Create a location-aware CSV validation exception.
+
+    Used by parsing helpers. Return InventoryValidationError naming a row or header and field;
+    the caller decides when to raise it.
+    """
     location = "header" if row is None else f"row {row}"
     return InventoryValidationError(f"{location}, field {field}: {message}")
 
 
 def _required_text(value: str, *, row: int, field: str, maximum: int) -> str:
+    """Validate and trim a required CSV text field.
+
+    Called while parsing each inventory row. Return nonempty trimmed text within the maximum
+    length; otherwise raise InventoryValidationError with row/field context.
+    """
     cleaned = value.strip()
     if not cleaned:
         raise _validation_error(row, field, "value is required")
@@ -55,6 +65,11 @@ def _required_text(value: str, *, row: int, field: str, maximum: int) -> str:
 
 
 def _optional_text(value: str, *, row: int, field: str, maximum: int = 100) -> str | None:
+    """Normalize an optional CSV text field without inventing missing facts.
+
+    Called during row parsing. Return trimmed text or None for blank input; raise
+    InventoryValidationError if nonblank text exceeds the length bound.
+    """
     cleaned = value.strip()
     if not cleaned:
         return None
@@ -72,6 +87,12 @@ def _integer(
     maximum: int,
     required: bool,
 ) -> int | None:
+    """Parse an ASCII nonnegative integer within explicit bounds.
+
+    Called for year and mileage CSV fields. Return the parsed integer, or None only for blank
+    optional input. Raise InventoryValidationError for missing required values, invalid
+    digits, or out-of-range values.
+    """
     cleaned = value.strip()
     if not cleaned and not required:
         return None
@@ -84,6 +105,12 @@ def _integer(
 
 
 def _price_cents(value: str, *, row: int) -> int | None:
+    """Convert the source CSV whole-dollar price into integer cents.
+
+    Called during CSV parsing. Return None for blank input or a bounded cents value. Raise
+    InventoryValidationError for fractional/non-ASCII/negative input or storage overflow; this
+    source format accepts whole dollars only.
+    """
     cleaned = value.strip()
     if not cleaned:
         return None
@@ -101,6 +128,13 @@ def parse_inventory_csv(
     max_file_bytes: int = MAX_FILE_BYTES,
     max_records: int = MAX_RECORDS,
 ) -> tuple[ImportVehicle, ...]:
+    """Validate the entire bounded CSV before opening an import transaction.
+
+    Called by the import CLI and evaluation setup. Return a nonempty tuple of ImportVehicle
+    records with normalized missing values. Raise InventoryValidationError for
+    unreadable/oversized files, invalid UTF-8/CSV/header/rows, duplicate stocks, or an empty
+    dataset. No database writes occur here.
+    """
     try:
         size = path.stat().st_size
     except OSError as exc:
@@ -200,12 +234,24 @@ class InventoryImportService:
         session_factory: SessionFactory,
         repository: InventoryImportRepository | None = None,
     ) -> None:
+        """Wire the inventory import transaction service.
+
+        Constructed by the import CLI or evaluation setup. Store the session factory and
+        supplied/default repository; return None without opening a session.
+        """
         self._session_factory = session_factory
         self._repository = repository or InventoryImportRepository()
 
     def import_records(
         self, dealership_slug: str, records: Sequence[ImportVehicle]
     ) -> ImportResult:
+        """Commit validated inventory records for one existing dealership.
+
+        Called after full CSV parsing with the API server stopped for operational imports.
+        Return committed inserted/updated/unchanged counts. Raise DealershipNotFoundError for
+        missing scope; database failures roll back the transaction. Rows absent from the file
+        are not deleted.
+        """
         with self._session_factory.begin() as session:
             dealership_id = self._repository.dealership_id(session, dealership_slug)
             if dealership_id is None:

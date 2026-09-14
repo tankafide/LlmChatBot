@@ -16,6 +16,8 @@ from autoassist.inventory.service import InventoryNotFoundError
 from autoassist.safety.matching import identity_for
 from autoassist.safety.records import CrashResult, RecallResult
 
+# Annotations constrain model arguments; tool docstrings also supply model-facing
+# descriptions, so their usage instructions and Args sections are part of the prompt.
 Limit = Annotated[int, Field(ge=1, le=10)]
 Year = Annotated[int, Field(ge=1886, le=2100)]
 PriceCents = Annotated[int, Field(ge=0)]
@@ -32,7 +34,13 @@ async def search_inventory(
     price_max_cents: PriceCents | None = None,
     limit: Limit = 10,
 ) -> dict[str, object]:
-    """Find/list vehicles using only the customer's requested filters.
+    """Validate requested filters, fetch inventory, and update run evidence. Return items plus
+    has_more; invalid ranges or output budgets raise ModelRetry, storage failures propagate.
+
+    Invoked by the agent when the customer asks to find/list vehicles or supplies new search
+    criteria.
+
+    Find/list vehicles using only the customer's requested filters.
 
     Do not search to answer a selected-vehicle follow-up, resolve an ambiguous pronoun,
     replace a missing stock lookup, or answer an unsupported request. Reuse the prompt's
@@ -49,6 +57,8 @@ async def search_inventory(
         price_max_cents: Inclusive maximum price in cents, not dollars.
         limit: Maximum number of results, from 1 to 10.
     """
+    # Individual field checks do not catch contradictory ranges. ModelRetry feeds
+    # this problem back for a bounded correction attempt.
     if year_min is not None and year_max is not None and year_min > year_max:
         raise ModelRetry("year_min must not exceed year_max")
     if (
@@ -57,6 +67,8 @@ async def search_inventory(
         and price_min_cents > price_max_cents
     ):
         raise ModelRetry("price_min_cents must not exceed price_max_cents")
+    # The model supplies structured filters, never SQL. Offload the whole service
+    # call so session creation, queries, and cleanup stay in the worker thread.
     page = await asyncio.to_thread(
         ctx.deps.inventory.search,
         ctx.deps.request.dealership_id,
@@ -71,6 +83,8 @@ async def search_inventory(
             limit=limit,
         ),
     )
+    # Keep authoritative records separately from model-facing JSON. Validation later
+    # checks answer IDs against this evidence and the latest search subset.
     for item in page.items:
         ctx.deps.evidence[item.id] = item
     ctx.deps.search_executed = True
@@ -79,6 +93,8 @@ async def search_inventory(
         "items": [vehicle_evidence(item) for item in page.items],
         "has_more": page.next_after is not None,
     }
+    # Account for serialized tool output before returning it; repeated or large
+    # results consume budget even when the final answer is short.
     ctx.deps.register_tool_result(value)
     return value
 
@@ -86,7 +102,12 @@ async def search_inventory(
 async def get_vehicle_by_stock(
     ctx: RunContext[ChatDependencies], stock_number: str
 ) -> dict[str, object]:
-    """Retrieve one vehicle by stock when absent from current_vehicle_evidence.
+    """Fetch one scoped stock and register its evidence. Return found=True with the vehicle, or
+    found=False with clarification; output budget/storage failures can propagate.
+
+    Invoked by the agent when an explicit stock is absent from current evidence.
+
+    Retrieve one vehicle by stock when absent from current_vehicle_evidence.
 
     Reuse existing current evidence for selected-vehicle follow-ups instead of fetching
     it again. found=false means return clarify and ask for a valid stock; do not run a
@@ -114,6 +135,12 @@ async def get_vehicle_by_stock(
 
 
 async def _lookup_safety(ctx: RunContext[ChatDependencies], branch: str) -> dict[str, object]:
+    """Resolve and refresh the subject, then invoke the requested safety branch. Return
+    clarification without an evidence ID, or evidence_id plus typed result JSON; invalid
+    scope/budgets may raise.
+
+    Called by the two safety tool wrappers; branch is selected by application code.
+    """
     deps = ctx.deps
     if (
         branch == "crash"
@@ -129,9 +156,13 @@ async def _lookup_safety(ctx: RunContext[ChatDependencies], branch: str) -> dict
         }
         deps.register_tool_result(value)
         return value
+    # Application code resolves the subject from the customer reference. Safety
+    # tools cannot silently choose an arbitrary vehicle ID supplied by the model.
     vehicle_id = resolve_safety_reference(
         deps.request, deps.evidence, deps.safety_presentation is not None
     )
+    # Clarification has no evidence_id and cannot authorize a factual safety answer.
+    # Actual empty/unavailable lookup results are evidence with an explicit status.
     if vehicle_id is None or deps.safety is None:
         value = {"clarification": "Specify a stock number or choose an inventory vehicle."}
         deps.register_tool_result(value)
@@ -161,13 +192,20 @@ async def _lookup_safety(ctx: RunContext[ChatDependencies], branch: str) -> dict
             presentation,
             deps.request.text if presentation is not None else None,
         )
+    # Expose a stable branch ID for answer validation to match against the typed
+    # run result, including ambiguous and unavailable outcomes.
     value = {"evidence_id": branch, "result": result.model_dump(mode="json")}
     deps.register_tool_result(value)
     return value
 
 
 async def lookup_recalls(ctx: RunContext[ChatDependencies]) -> dict[str, object]:
-    """Get recalls for the vehicle identified by stock, list reference or selected context.
+    """Return recall evidence or subject clarification through the shared safety adapter.
+    Empty/unavailable results remain evidence; adapter errors propagate.
+
+    Invoked by the agent for a customer recall question.
+
+    Get recalls for the vehicle identified by stock, list reference or selected context.
 
     Use only for a customer recall request, never for price/specification clarification.
     Resolve an explicit stock with get_vehicle_by_stock first if absent from current evidence.
@@ -179,7 +217,12 @@ async def lookup_recalls(ctx: RunContext[ChatDependencies]) -> dict[str, object]
 
 
 async def lookup_crash_ratings(ctx: RunContext[ChatDependencies]) -> dict[str, object]:
-    """Get crash ratings for the identified vehicle or resolve a pending NHTSA variant choice.
+    """Return crash evidence or clarification, using a pending variant menu when valid.
+    Ambiguous/unavailable results remain evidence; adapter errors propagate.
+
+    Invoked by the agent for crash ratings or a pending variant choice.
+
+    Get crash ratings for the identified vehicle or resolve a pending NHTSA variant choice.
 
     Use only for crash ratings or pending variant choices, never for inventory clarification.
     Resolve an explicit stock with get_vehicle_by_stock first if absent from current evidence.
@@ -191,7 +234,14 @@ async def lookup_crash_ratings(ctx: RunContext[ChatDependencies]) -> dict[str, o
 
 
 def vehicle_evidence(record: VehicleRecord) -> dict[str, object]:
-    """The same factual inventory projection for tool results and refreshed prompt context."""
+    """Return the plain JSON-compatible projection used in prompts/tools, retaining null inventory
+    values as unknown facts; no database read occurs.
+
+    Called by inventory tools and the runner refreshed-context projection; it does not register
+    budget usage itself.
+
+    The same factual inventory projection for tool results and refreshed prompt context.
+    """
     return {
         "vehicle_id": record.id,
         "stock_number": record.source_id,

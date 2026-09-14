@@ -7,6 +7,13 @@ from autoassist.evaluation.runner import evaluate, load_labels
 
 
 def main() -> None:
+    """Validate the evaluation suite or explicitly run and save a live evaluation.
+
+    Invoked by autoassist-evaluate. Without --live, print the case count and return None with
+    no model calls. With --live, call the configured paid model, write a report, and raise
+    SystemExit(0) for all checks passing or SystemExit(1) otherwise.
+    Argument/configuration/file failures propagate.
+    """
     parser = argparse.ArgumentParser(
         description="Evaluate real-model behavior on isolated imported inventory."
     )

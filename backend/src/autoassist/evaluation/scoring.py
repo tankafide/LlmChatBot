@@ -35,6 +35,13 @@ def score_turn(
     stocks: dict[str, str],
     safety: dict[str, str],
 ) -> dict[str, bool]:
+    """Compare one observed turn with deterministic label expectations.
+
+    Called by evaluation after a successful run. Return named boolean checks for tool choice,
+    intent, requested filters/fields, subject, safety status, and required/forbidden text.
+    Semantic correctness still requires human review; input structures are expected to be
+    valid traces.
+    """
     observed_tools = {call["name"] for call in calls}
     checks = {
         "tool_choice": observed_tools == set(label.tools),
@@ -44,6 +51,12 @@ def score_turn(
         searches = [call["args"] for call in calls if call["name"] == "search_inventory"]
 
         def normalized(values: dict[str, Any]) -> dict[str, Any]:
+            """Normalize filter dictionaries for evaluation comparison.
+
+            Used within score_turn when filters are expected. Return a copy without null
+            entries or limit, case-folding string values; do not mutate either expected or
+            observed filters.
+            """
             return {
                 key: value.casefold() if isinstance(value, str) else value
                 for key, value in values.items()

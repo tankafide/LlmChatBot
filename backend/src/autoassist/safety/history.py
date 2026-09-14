@@ -7,6 +7,12 @@ from autoassist.safety.records import Presentation, PresentationUpdate
 
 
 def restore_presentation(units: tuple[str, ...], selected: str | None) -> Presentation | None:
+    """Replay retained safety-choice updates for the selected inventory vehicle.
+
+    Called before a model turn. Apply keep/set/clear metadata in order, treating absent
+    metadata as clear. Return the final Presentation only if it matches selected; otherwise
+    None. Invalid stored JSON/update data raises rather than guessing choices.
+    """
     presentation = None
     for unit in retain_replay(units):
         data = json.loads(unit)

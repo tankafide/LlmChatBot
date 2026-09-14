@@ -4,6 +4,12 @@ from autoassist.safety.records import CrashResult, RecallResult
 
 
 def render_safety(results: list[RecallResult | CrashResult]) -> str:
+    """Render validated safety evidence within the public reply character limit.
+
+    Called by the grounded runner for a nonempty same-vehicle result list. Return text no
+    longer than 8000 characters, retrying shorter excerpts as needed. Raise ValueError if
+    mandatory material cannot fit; empty input raises IndexError.
+    """
     for excerpt_limit in (300, 180, 80):
         reply = _render_safety(results, excerpt_limit)
         if len(reply) <= 8000:
@@ -12,6 +18,13 @@ def render_safety(results: list[RecallResult | CrashResult]) -> str:
 
 
 def _render_safety(results: list[RecallResult | CrashResult], excerpt_limit: int) -> str:
+    """Build a safety reply using a chosen excerpt length.
+
+    Called by render_safety for each size attempt. Return text with statuses, urgent flags,
+    choices/ratings, provenance, and uncertainty statements. Assume a nonempty validated
+    same-vehicle list; empty input raises IndexError. This helper does not enforce the overall
+    reply limit.
+    """
     first = results[0]
     identity = first.lookup_identity
     lines = [f"{identity.year} {identity.make} {identity.model} (stock {first.stock_id}) — NHTSA"]

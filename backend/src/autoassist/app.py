@@ -39,11 +39,24 @@ RunnerFactory = Callable[[str, str, InventoryService], ChatRunner]
 def create_app(
     settings: Settings | None = None, *, runner_factory: RunnerFactory | None = None
 ) -> FastAPI:
+    """Build the FastAPI application and register its routes and resource lifespan.
+
+    Called by main.py when constructing the server, or by tests with injected settings
+    and a fake runner factory. Resource initialization occurs when lifespan starts.
+    Return the configured FastAPI instance; this factory does not run a chat turn.
+    """
     configured_settings = settings
     run_timeout_seconds = 60.0
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        """Own the per-worker services for the lifetime of the running application.
+
+        FastAPI enters this context at startup and exits it at shutdown. Initialize storage,
+        provider runners, and recovery tasks, then yield None while requests are served.
+        On exit, drain conversation work and close resources covered by the cleanup blocks.
+        Configuration, startup, or cleanup failures propagate; yield is not a chat result.
+        """
         configure_events()
         sweeper: asyncio.Task[None] | None = None
         runtime_settings = configured_settings or Settings()
@@ -54,6 +67,8 @@ def create_app(
         runners: dict[str, ChatRunner] = {}
         try:
             app.state.safety_service = SafetyService(NhtsaClient(nhtsa_client))
+            # Multiple workers may start together. The database startup lock serializes
+            # schema/bootstrap work; ordinary startup preserves existing conversations.
             with database_startup_lock(engine):
                 initialize_schema(engine)
                 bootstrap_dealerships(session_factory, runtime_config)
@@ -62,6 +77,8 @@ def create_app(
             app.state.session_factory = session_factory
             inventory_service = InventoryService(session_factory, InventoryRepository())
             app.state.inventory_service = inventory_service
+            # Build runners only for configured credentials/models. Missing provider setup
+            # does not prevent inventory/history access; new chat execution checks availability.
             for name, connection in runtime_config.connections.items():
                 api_key = os.environ.get(connection.api_key_env)
                 if api_key and not connection.model.startswith("REPLACE_WITH_"):
@@ -88,6 +105,8 @@ def create_app(
                 runners,
                 run_timeout_seconds=run_timeout_seconds,
             )
+            # Recover expired requests before serving traffic, then sweep periodically.
+            # Fresh PostgreSQL leases protect turns still owned by another worker.
             await asyncio.to_thread(conversation_store.recover_interrupted)
             if conversation_store.leases_enabled:
                 sweeper = asyncio.create_task(sweep_stale(conversation_store))
@@ -96,6 +115,8 @@ def create_app(
         finally:
             active_service = getattr(app.state, "conversation_service", None)
             try:
+                # Drain owned conversation work before closing clients or the database pool.
+                # If startup failed earlier, close any runners already constructed instead.
                 if isinstance(active_service, ConversationService):
                     await active_service.shutdown()
                 else:

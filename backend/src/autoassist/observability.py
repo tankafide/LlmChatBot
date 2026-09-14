@@ -20,6 +20,11 @@ logger = logging.getLogger("autoassist.events")
 
 
 def configure_events() -> None:
+    """Configure the application event logger once without duplicating handlers.
+
+    Called at startup. Install a plain stream handler if absent, enable INFO, and disable
+    propagation. Return None; existing handlers are retained.
+    """
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(message)s"))
@@ -29,6 +34,12 @@ def configure_events() -> None:
 
 
 def event(name: str, **fields: str | int | float | None) -> None:
+    """Emit one structured event with optional current-turn correlation IDs.
+
+    Called throughout lifecycle and integration code. Explicit fields override context fields,
+    then compact JSON is logged. Return None. Callers must pass metadata only: this helper
+    does not redact secrets or payload text.
+    """
     metrics = current_turn.get()
     values: dict[str, str | int | float | None] = {"event": name}
     if metrics is not None:

@@ -7,15 +7,32 @@ from autoassist.safety.records import Candidate, Identity, Presentation
 
 
 def tokens(text: str) -> tuple[str, ...]:
+    """Normalize safety identity/description text into comparable tokens.
+
+    Used by matching and upstream validation. Return case-folded whitespace tokens with
+    hyphens/en dashes treated as separators; an empty input yields an empty tuple.
+    """
     return tuple(re.sub(r"[-–]", " ", text.casefold()).split())
 
 
 def identity_for(vehicle: VehicleRecord) -> Identity:
+    """Project an inventory vehicle into its NHTSA year/make/model identity.
+
+    Called before safety lookups and presentation checks. Return Identity without inferring
+    VIN, trim, or repair applicability.
+    """
     return Identity(year=vehicle.year, make=vehicle.make, model=vehicle.model)
 
 
 def compatibility(vehicle: VehicleRecord, candidate: Candidate) -> str:
-    """Return compatible, unresolved, or conflicting without semantic model aliases."""
+    """Compare a discovered variant conservatively against inventory identity.
+
+    Called by SafetyService.crash before presenting or selecting candidates. Return
+    compatible when the identity prefix and known suffix attributes agree, conflicting
+    for an identity/attribute contradiction, or unresolved when suffix information cannot
+    be established. Unknown suffixes never authorize an automatic match; no model alias
+    or vehicle selection is inferred here.
+    """
     prefix = tokens(f"{vehicle.year} {vehicle.make} {vehicle.model}")
     description = tokens(candidate.description)
     if description[: len(prefix)] != prefix:
@@ -46,7 +63,18 @@ def compatibility(vehicle: VehicleRecord, candidate: Candidate) -> str:
 
 
 def resolve_choice(text: str, presentation: Presentation) -> tuple[int | None, tuple[str, ...]]:
-    """Whole-message grammar. A descriptor never invents an upstream identifier."""
+    """Interpret a whole reply against the NHTSA menu the customer actually saw.
+
+    Called by SafetyService.crash when a presentation is pending. Resolve an exact
+    unique description, displayed ID, or unambiguous ordinal before considering descriptors.
+
+    Returns:
+        (candidate_id, ()) for a resolved displayed choice; (None, descriptor_tokens)
+        for a permitted descriptive reply that still needs fresh candidate matching;
+        or (None, ()) for invalid, negated, combined, ambiguous, or out-of-range choices.
+        A descriptor never invents an upstream ID. This function does not fetch or select
+        a fresh NHTSA record itself.
+    """
     normalized = " ".join(text.casefold().split())
     exact = [
         candidate

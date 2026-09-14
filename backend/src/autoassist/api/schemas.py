@@ -82,6 +82,12 @@ class InventoryQuery(BaseModel):
     @field_validator("price_min", "price_max")
     @classmethod
     def validate_price_precision(cls, value: Decimal | None) -> Decimal | None:
+        """Reject price filters with more than two decimal places.
+
+        Pydantic calls this while parsing inventory query prices. Return the Decimal
+        unchanged, or None for an omitted bound; raise ValueError for excessive precision so
+        HTTP validation can reject the request.
+        """
         if value is not None:
             exponent = value.as_tuple().exponent
             if isinstance(exponent, int) and exponent < -2:
@@ -90,6 +96,11 @@ class InventoryQuery(BaseModel):
 
     @model_validator(mode="after")
     def validate_ranges(self) -> InventoryQuery:
+        """Reject contradictory inventory bounds after individual field validation.
+
+        Return self if supplied minimums do not exceed maximums. Raise ValueError otherwise;
+        FastAPI reports request validation failures before searching inventory.
+        """
         if (
             self.year_min is not None
             and self.year_max is not None
@@ -106,6 +117,12 @@ class InventoryQuery(BaseModel):
 
 
 def decimal_to_cents(value: Decimal | None) -> int | None:
+    """Convert an already-validated public price filter into integer cents.
+
+    Called by the inventory HTTP route. Return None for an omitted bound; otherwise return
+    value times 100 as an integer. Precision must have been validated first, since int would
+    truncate extra fractional cents.
+    """
     return None if value is None else int(value * 100)
 
 
@@ -131,6 +148,12 @@ class SubmitMessageRequest(BaseModel):
     @field_validator("text")
     @classmethod
     def reject_whitespace_only(cls, value: str) -> str:
+        """Require meaningful text without rewriting the submitted payload.
+
+        Pydantic calls this for message POST bodies. Return the original string, preserving
+        whitespace for retry identity; raise ValueError if it contains no non-whitespace
+        character.
+        """
         if not value.strip():
             raise ValueError("text must contain a non-whitespace character")
         return value

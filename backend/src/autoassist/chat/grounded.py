@@ -80,6 +80,8 @@ Scope:
 """
 
 
+# Convert one durable request into a bounded model/tool run. The model chooses
+# a typed answer; answers.py validates its evidence and renders factual values.
 class PydanticChatRunner:
     def __init__(
         self,
@@ -89,6 +91,11 @@ class PydanticChatRunner:
         close_callback: object | None = None,
         safety: SafetyService | None = None,
     ) -> None:
+        """Build a bounded typed agent with sequential tools and evidence validation. Return None;
+        this configures the runner without invoking the provider.
+
+        Constructed by provider runner factories during app startup.
+        """
         self._inventory = inventory
         self._safety = safety
         self._close_callback = close_callback
@@ -97,6 +104,8 @@ class PydanticChatRunner:
             deps_type=ChatDependencies,
             output_type=GroundedAnswer,
             instructions=INSTRUCTIONS,
+            # Tools mutate shared per-run evidence, so they execute sequentially even if
+            # the provider proposes several calls together.
             tools=[
                 Tool(search_inventory, sequential=True),
                 Tool(get_vehicle_by_stock, sequential=True),
@@ -110,9 +119,22 @@ class PydanticChatRunner:
         self._agent.output_validator(self._validate_answer)
 
     def set_safety_service(self, safety: SafetyService) -> None:
+        """Attach the safety service used by subsequent runs. Return None; no safety lookup is
+        performed.
+
+        Called by app startup after runner construction.
+        """
         self._safety = safety
 
     async def run(self, request: ChatRunRequest) -> ChatRunResult:
+        """Execute one grounded model/tool turn and return ChatRunResult with rendered reply,
+        replay, and selection updates. Nothing is persisted here; provider/budget failures raise
+        domain errors.
+
+        Called by the conversation execution owner and the evaluation harness.
+        """
+        # Fresh dependencies isolate evidence, safety results, and budgets to this turn.
+        # Only explicitly restored conversation context carries over from prior turns.
         dependencies = ChatDependencies(
             inventory=self._inventory, request=request, safety=self._safety
         )
@@ -123,6 +145,8 @@ class PydanticChatRunner:
         dependencies.safety_presentation = restore_presentation(
             request.replay_units, request.selected_vehicle_id
         )
+        # History explains prior dialogue; refreshed inventory authorizes current facts.
+        # Load selected/list vehicles again rather than trusting old tool values.
         await self._seed_authoritative_context(dependencies)
         history = self._load_history(request.replay_units)
         prompt = self._current_prompt(dependencies)
@@ -140,6 +164,8 @@ class PydanticChatRunner:
         except (UnexpectedModelBehavior, UsageLimitExceeded) as exc:
             raise ChatProviderError from exc
 
+        # Output validation has already succeeded. The model supplies references and
+        # intent; application rendering supplies the factual prose returned to the user.
         answer = result.output
         reply = (
             render_safety(
@@ -157,6 +183,8 @@ class PydanticChatRunner:
             if selection_action == "clear"
             else request.selected_vehicle_id
         )
+        # A pending NHTSA variant menu is separate from the inventory numbered list.
+        # Changing the inventory selection invalidates that old variant menu.
         update = PresentationUpdate(
             action="clear" if selected != request.selected_vehicle_id else "keep"
         )
@@ -177,8 +205,12 @@ class PydanticChatRunner:
                         retrieved_at=crash.retrieved_at,
                     ),
                 )
+            # Preserve pending choices through temporary unavailability; a conclusive
+            # non-ambiguous result ends the clarification workflow.
             elif crash.status != "unavailable":
                 update = PresentationUpdate(action="clear")
+        # Retain complete tool calls/results and the rendered reply, plus application
+        # context in the envelope. The store persists this only on successful completion.
         messages_json = result.new_messages_json(output_tool_return_content=reply).decode("utf-8")
         replay_json = json.dumps(
             {
@@ -200,6 +232,11 @@ class PydanticChatRunner:
         )
 
     async def close(self) -> None:
+        """Invoke the optional close/aclose callback and await it if needed. Return None, including
+        when no close method exists; callback errors propagate.
+
+        Called during service shutdown or partial-startup cleanup.
+        """
         callback = self._close_callback
         if callback is not None:
             close = getattr(callback, "aclose", None) or getattr(callback, "close", None)
@@ -209,6 +246,11 @@ class PydanticChatRunner:
                     await result
 
     async def _seed_authoritative_context(self, dependencies: ChatDependencies) -> None:
+        """Refresh previously selected/presented vehicles into this run evidence. Return None; skip
+        missing vehicles, while other storage errors propagate.
+
+        Called by run before building the prompt.
+        """
         ids = list(dependencies.request.presented_vehicle_ids)
         if dependencies.request.selected_vehicle_id is not None:
             ids.append(dependencies.request.selected_vehicle_id)
@@ -224,13 +266,25 @@ class PydanticChatRunner:
     def _validate_answer(
         self, ctx: RunContext[ChatDependencies], answer: GroundedAnswer
     ) -> GroundedAnswer:
+        """Return the validated GroundedAnswer unchanged. Convert evidence inconsistencies into
+        ModelRetry so the agent can attempt a bounded correction.
+
+        Registered with the agent as its output validator before final answer acceptance.
+        """
         try:
             return validate_answer(ctx.deps, answer)
+        # Schema-valid output can still cite wrong evidence. Feed that error back for
+        # a bounded correction attempt; exhausted retries fail the turn.
         except InvalidAnswerError as exc:
             raise ModelRetry(str(exc)) from exc
 
     @staticmethod
     def _current_prompt(dependencies: ChatDependencies) -> str:
+        """Return a JSON-bearing prompt string containing user text, refreshed evidence, and
+        application context; it does not call the model.
+
+        Called by run after refreshing inventory evidence.
+        """
         request = dependencies.request
         pending = dependencies.safety_presentation
         context = {
@@ -251,7 +305,14 @@ class PydanticChatRunner:
 
     @staticmethod
     def _load_history(units: tuple[str, ...]) -> list[ModelMessage]:
+        """Deserialize retained replay into ordered ModelMessages. Return an empty list with no
+        retained history; raise ValueError for invalid stored messages.
+
+        Called by run to restore retained completed exchanges.
+        """
         messages: list[ModelMessage] = []
+        # Restore complete retained turns with the library schema so tool calls and
+        # results stay paired. Invalid stored replay fails explicitly.
         for unit in retain_replay(units):
             try:
                 data = json.loads(unit)

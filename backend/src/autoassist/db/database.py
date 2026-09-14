@@ -22,6 +22,11 @@ class SchemaMismatchError(RuntimeError):
 
 
 def _ensure_sqlite_parent(database_url: str) -> None:
+    """Create the parent directory for an on-disk SQLite URL.
+
+    Called before engine construction. Return None without changes for other dialects or
+    in-memory SQLite; filesystem/URL parsing errors propagate.
+    """
     url = make_url(database_url)
     if url.drivername != "sqlite" or not url.database or url.database == ":memory:":
         return
@@ -29,6 +34,13 @@ def _ensure_sqlite_parent(database_url: str) -> None:
 
 
 def create_database_engine(database_url: str) -> Engine:
+    """Build an engine with the supported dialect and bounded database waits.
+
+    Called by startup, import, and isolated verification/evaluation. Return a SQLAlchemy
+    Engine for SQLite or PostgreSQL; reject other dialects with ValueError. Configure SQLite
+    connection pragmas or PostgreSQL pool health checks and statement/lock timeouts. The owner
+    must dispose the engine.
+    """
     _ensure_sqlite_parent(database_url)
     url = make_url(database_url)
     if url.drivername == "sqlite":
@@ -52,6 +64,12 @@ def create_database_engine(database_url: str) -> Engine:
 
         @event.listens_for(engine, "connect")
         def configure_connection(dbapi_connection: object, _connection_record: object) -> None:
+            """Enable SQLite foreign keys and a busy timeout for each new connection.
+
+            SQLAlchemy invokes this connect event callback. Temporarily enable autocommit so
+            pragmas take effect, then restore its prior value and close the cursor. Return
+            None; database configuration errors propagate.
+            """
             connection = cast(sqlite3.Connection, dbapi_connection)
             previous_autocommit = connection.autocommit
             connection.autocommit = True
@@ -68,7 +86,13 @@ def create_database_engine(database_url: str) -> Engine:
 
 @contextmanager
 def database_startup_lock(engine: Engine) -> Iterator[None]:
-    """Serialize schema/bootstrap startup across PostgreSQL workers."""
+    """Serialize PostgreSQL schema/bootstrap work across server workers.
+
+    Used by startup and isolated storage setup. Yield None while a session-level advisory
+    lock is held, then unlock in finally; other dialects yield without locking. Database
+    errors and errors inside the caller context propagate. The dedicated connection stays
+    open for the context lifetime; this is not a conversation request row lock.
+    """
     if engine.dialect.name != "postgresql":
         yield
         return
@@ -81,6 +105,12 @@ def database_startup_lock(engine: Engine) -> Iterator[None]:
 
 
 def initialize_schema(engine: Engine) -> None:
+    """Create absent tables only after checking existing storage compatibility.
+
+    Called before bootstrap/import/recovery. Return None if validation and create_all succeed.
+    Raise SchemaMismatchError for detected column/timestamp/index incompatibilities; database
+    errors propagate. This is a compatibility guard, not a migration or automatic reset.
+    """
     # create_all does not upgrade existing tables. Reject incompatible storage before
     # bootstrap or recovery can write to it; never repair/reset user data implicitly.
     inspector = inspect(engine)
@@ -134,6 +164,12 @@ def initialize_schema(engine: Engine) -> None:
 
 
 def _index_predicate_matches(dialect: str, expected: str, actual: str) -> bool:
+    """Compare a reflected index predicate against accepted dialect spellings.
+
+    Called during schema validation. Return True for the exact expected spelling or the known
+    PostgreSQL cast/parenthesis form; otherwise False. Similar words in different SQL do not
+    count as a match.
+    """
     # PostgreSQL reflects this varchar comparison with explicit text casts and
     # parentheses. Accept that catalog spelling, not arbitrary SQL containing
     # the same words. Unfiltered indexes must also remain unfiltered.
@@ -144,6 +180,11 @@ def _index_predicate_matches(dialect: str, expected: str, actual: str) -> bool:
 
 
 def check_storage(session_factory: SessionFactory) -> None:
+    """Probe every required table column before reporting storage ready.
+
+    Called at startup and by health checks. Return None if each bounded read succeeds, even
+    with empty tables; database/schema errors propagate. No external provider is contacted.
+    """
     with session_factory() as session:
         # Exercise every required column, including empty tables. A SELECT of only
         # the primary key masks old table shapes until a real request is made.
@@ -152,7 +193,13 @@ def check_storage(session_factory: SessionFactory) -> None:
 
 
 def is_storage_unavailable(error: OperationalError) -> bool:
-    """Recognize database availability failures without hiding SQL/schema defects."""
+    """Classify database availability failures without hiding schema or SQL defects.
+
+    Called by services/routes handling OperationalError. Return True for recognized SQLite
+    availability codes, connection-level psycopg failures, or selected PostgreSQL SQLSTATEs;
+    return False for unrecognized errors so the caller can propagate them. Do not retry,
+    log, or mutate storage here.
+    """
     original = error.orig
     if isinstance(original, sqlite3.OperationalError):
         code = getattr(original, "sqlite_errorcode", None)
@@ -179,4 +226,10 @@ def is_storage_unavailable(error: OperationalError) -> bool:
 
 
 def make_session_factory(engine: Engine) -> SessionFactory:
+    """Return a factory for independent sessions bound to this engine.
+
+    Used during startup/import/test setup. Disable expiration on commit so loaded attributes
+    remain usable; callers still own session lifetime and should return plain records across
+    async boundaries.
+    """
     return sessionmaker(bind=engine, expire_on_commit=False)

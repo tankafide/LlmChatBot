@@ -35,6 +35,13 @@ class ChatDependencies:
     tool_result_bytes: int = 0
 
     def register_tool_result(self, value: object) -> None:
+        """Charge a tool result against per-turn count and size budgets.
+
+        Called before tools return JSON to the model. Increment invocation count, validate
+        individual serialized size, and accumulate total bytes. Return None on success; raise
+        ModelRetry on exhausted limits. Counters already updated are not rolled back, so
+        repeated failed attempts cannot avoid accounting.
+        """
         self.tool_invocations += 1
         if self.tool_invocations > 8:
             raise ModelRetry("The tool invocation budget is exhausted.")

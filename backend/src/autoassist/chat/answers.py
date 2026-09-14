@@ -11,6 +11,8 @@ from autoassist.chat.context import ChatDependencies
 from autoassist.chat.selection import resolve_reference, resolve_safety_reference
 from autoassist.inventory.records import VehicleRecord
 
+# The model requests field names, never factual values. The renderer obtains
+# prices and specifications from current inventory evidence.
 AllowedField = Literal[
     "price",
     "body_type",
@@ -71,6 +73,13 @@ class InvalidAnswerError(ValueError):
 
 
 def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedAnswer:
+    """Pydantic checks shape; these checks enforce meaning against evidence from this run. Validate
+    before rendering or deriving persistent selection changes. Return the proposed answer
+    unchanged when its intent, evidence IDs, and subject agree with this run. Raise
+    InvalidAnswerError on a semantic mismatch; do not persist selection.
+
+    Called by the runner output validator before rendering or selection changes.
+    """
     if answer.intent == "safety":
         if not deps.safety_run.results:
             raise InvalidAnswerError(
@@ -85,6 +94,8 @@ def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedA
             required.add("crash")
         if not required.issubset(deps.safety_run.results):
             raise InvalidAnswerError("Call every requested safety branch before answering.")
+        # Require every branch, including failures, so successful recall evidence
+        # cannot hide unavailable crash evidence or vice versa.
         if not answer.safety_evidence_ids or set(answer.safety_evidence_ids) != set(
             deps.safety_run.results
         ):
@@ -114,6 +125,8 @@ def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedA
         raise InvalidAnswerError("Vehicle IDs must not repeat.")
     if any(vehicle_id not in deps.evidence for vehicle_id in vehicle_ids):
         raise InvalidAnswerError("Every vehicle ID must come from current authoritative evidence.")
+    # Being in context does not make a vehicle a search result. Lists and no_match
+    # must describe the latest actual filtered search in this turn.
     if answer.intent == "list":
         if not deps.search_executed or not answer.vehicles:
             raise InvalidAnswerError("A list requires a non-empty inventory search.")
@@ -133,6 +146,8 @@ def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedA
         raise InvalidAnswerError("Vehicle details require exactly one vehicle.")
     elif answer.intent in {"clarify", "unsupported"} and answer.vehicles:
         raise InvalidAnswerError("This intent cannot contain vehicle facts.")
+    # A real evidenced vehicle can still be the wrong subject. Independently resolve
+    # the customer reference and require the answer to identify that same vehicle.
     if answer.intent == "details":
         resolved = resolve_reference(deps.request, deps.evidence)
         if resolved != vehicle_ids[0]:
@@ -145,7 +160,13 @@ def validate_answer(deps: ChatDependencies, answer: GroundedAnswer) -> GroundedA
 def selection_for(
     answer: GroundedAnswer, deps: ChatDependencies
 ) -> tuple[Literal["keep", "set", "clear"], str | None]:
-    """Derive the state update only after answer/evidence validation has succeeded."""
+    """Derive and return (keep/set/clear, vehicle ID or None) from a validated answer. None
+    accompanies keep/clear; the caller applies the action after successful completion.
+
+    Called by the runner only after answer validation succeeds.
+
+    Derive the state update only after answer/evidence validation has succeeded.
+    """
     if answer.intent == "details":
         return "set", answer.vehicles[0].vehicle_id
     if answer.intent == "safety":
@@ -154,6 +175,8 @@ def selection_for(
         explicit = resolve_reference(deps.request, deps.evidence, allow_selected=False)
         if explicit is not None and explicit in {item.vehicle_id for item in answer.vehicles}:
             return "set", explicit
+        # A fresh list without an explicit choice clears the old selection so later
+        # pronouns do not silently refer to a car from the previous search.
         return "clear", None
     if answer.intent == "no_match":
         return "clear", None
@@ -161,6 +184,13 @@ def selection_for(
 
 
 def presentation_for(answer: GroundedAnswer) -> tuple[str, ...] | None:
+    """None keeps the previous list; an empty tuple clears it. Preserve rendered order because a
+    follow-up such as "the second one" uses these IDs. Return ordered vehicle IDs for a list, an
+    empty tuple for no_match, or None to keep the previous list. This describes a state update
+    without applying it.
+
+    Called by the runner to describe the list-context update saved with completion.
+    """
     if answer.intent == "list":
         return tuple(item.vehicle_id for item in answer.vehicles)
     if answer.intent == "no_match":
@@ -169,6 +199,13 @@ def presentation_for(answer: GroundedAnswer) -> tuple[str, ...] | None:
 
 
 def render_answer(answer: GroundedAnswer, evidence: dict[str, VehicleRecord]) -> str:
+    """Deterministic templates form the final grounding boundary: the model chooses what to show,
+    while inventory records supply all vehicle facts. Return deterministic
+    inventory/clarification text from a validated answer and current records. Safety rendering
+    is handled separately; missing evidence IDs raise KeyError.
+
+    Called by the runner for validated non-safety answers.
+    """
     if answer.intent == "clarify":
         return "Please specify a stock number or a number from the latest vehicle list."
     if answer.intent == "no_match":
@@ -187,6 +224,13 @@ def render_answer(answer: GroundedAnswer, evidence: dict[str, VehicleRecord]) ->
 
 
 def _render_field(record: VehicleRecord, field_name: AllowedField) -> str:
+    """Return one labeled inventory value as text, formatting cents/mileage and using unknown for
+    null data. Supported field names come from AllowedField.
+
+    Called for each requested inventory field during answer rendering.
+    """
+    # Integer cents avoid floating-point currency errors. Missing fields remain
+    # explicitly unknown instead of being guessed.
     if field_name == "price":
         value = (
             "unknown"

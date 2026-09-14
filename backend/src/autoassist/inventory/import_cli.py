@@ -23,6 +23,11 @@ from autoassist.inventory.importer import (
 
 
 def _parser() -> argparse.ArgumentParser:
+    """Return the inventory importer argument parser.
+
+    Called by main. Require a file, dealership slug, and --server-stopped acknowledgement;
+    building the parser does not verify that the server is actually stopped.
+    """
     parser = argparse.ArgumentParser(
         description="Atomically import the documented dealership inventory CSV."
     )
@@ -40,6 +45,19 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Validate inputs and run the explicitly offline inventory import.
+
+    Called by the import command. Parse/validate the whole CSV before database setup, then
+    bootstrap and commit inventory; always dispose any created engine.
+
+    Returns:
+        0 after a confirmed import, 2 for expected configuration/schema/data rejection,
+        or 1 for recognized filesystem/database failures. Diagnostics go to stdout/stderr.
+
+    Raises:
+        SystemExit: argparse help or invalid arguments. Other unexpected errors propagate;
+            --server-stopped is an operator acknowledgement, not a process check.
+    """
     args = _parser().parse_args(argv)
     settings = Settings()
     engine = None

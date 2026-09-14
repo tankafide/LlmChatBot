@@ -30,6 +30,11 @@ class Presentation(Record):
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
+        """Validate a displayed NHTSA candidate menu after field parsing.
+
+        Pydantic calls this when constructing/restoring Presentation. Return self if IDs are
+        unique and total count covers displayed choices; otherwise raise ValueError.
+        """
         if self.total_candidate_count < len(self.candidates):
             raise ValueError("candidate count is smaller than displayed choices")
         if len({item.vehicle_id for item in self.candidates}) != len(self.candidates):
@@ -43,6 +48,11 @@ class PresentationUpdate(Record):
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
+        """Require presentation data exactly when the action is set.
+
+        Pydantic calls this when validating replay metadata. Return self for a consistent
+        keep/clear/set update; raise ValueError when the action and payload disagree.
+        """
         if (self.action == "set") != (self.presentation is not None):
             raise ValueError("only set carries a presentation")
         return self
@@ -54,6 +64,11 @@ class Category(Record):
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
+        """Require stars exactly when a rating category is rated.
+
+        Pydantic calls this after individual fields are checked. Return self on consistency;
+        raise ValueError for stars attached to uncertainty or missing from a rated category.
+        """
         if (self.status == "rated") != (self.stars is not None):
             raise ValueError("only rated categories have stars")
         return self
@@ -103,6 +118,12 @@ class RecallResult(Provenance):
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
+        """Validate recall status, provenance, and campaign counts together.
+
+        Pydantic calls this when building recall evidence. Return self for a valid
+        available/empty/unavailable result. Raise ValueError if unavailable contains success
+        data, success lacks provenance, empty contains campaigns, or totals disagree.
+        """
         if self.status == "unavailable":
             if self.reason is None or self.total_count is not None or self.campaigns:
                 raise ValueError("unavailable recalls cannot contain success data")
@@ -132,6 +153,13 @@ class CrashResult(Provenance):
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
+        """Validate crash status against provenance, candidates, and summary ratings.
+
+        Pydantic calls this when building crash evidence. Return self when fields agree; raise
+        ValueError for success data on unavailable, missing success provenance, misplaced
+        candidates, missing matched/category data, inconsistent summary status, or invalid
+        candidate totals.
+        """
         if self.status == "unavailable":
             if self.reason is None or self.categories or self.candidates:
                 raise ValueError("unavailable crash result has success data")

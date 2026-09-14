@@ -12,6 +12,12 @@ from autoassist.safety.records import PresentationUpdate
 
 
 def completion_presentation(replay_json: str) -> PresentationUpdate | None:
+    """Read the safety-context update from a completed model replay envelope.
+
+    Called inside completion validation. Return PresentationUpdate, or None if the metadata
+    key is absent. Invalid JSON, unexpected shapes, or invalid update fields propagate as
+    decoding/validation errors before persistence.
+    """
     metadata = json.loads(replay_json)
     if "safety_presentation_update" not in metadata:
         return None
@@ -26,6 +32,12 @@ def validate_completion_selection(
     update: PresentationUpdate | None,
     vehicle_identity: tuple[int, str, str] | None,
 ) -> None:
+    """Ensure proposed safety choices agree with the selection being committed.
+
+    Called by ConversationStore.complete under its transaction. Return None for a consistent
+    update or absent metadata. Raise ChatProviderError if a presentation names another
+    vehicle/identity or keep would preserve choices after selection changed.
+    """
     if update is None:
         return
     if update.presentation is not None and update.presentation.inventory_vehicle_id != selected:
@@ -44,6 +56,12 @@ def completed_outcome(
     user: MessageRecord,
     assistant: MessageRecord,
 ) -> ConversationOutcome:
+    """Build the replayable public response for a successful turn.
+
+    Called before atomic completion persistence. Return a 200 ConversationOutcome with both
+    messages and selection, marking the copied user message completed. Do not mutate the input
+    records or commit database work.
+    """
     return ConversationOutcome(
         200,
         {

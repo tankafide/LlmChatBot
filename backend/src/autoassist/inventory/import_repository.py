@@ -15,11 +15,23 @@ class InventoryImportRepository:
     _lookup_batch_size = 500
 
     def dealership_id(self, session: Session, slug: str) -> str | None:
+        """Resolve the import target slug to its persisted UUID.
+
+        Called inside the import service transaction. Return the ID or None if absent; no
+        dealership is created here.
+        """
         return session.scalar(select(Dealership.id).where(Dealership.slug == slug))
 
     def upsert(
         self, session: Session, dealership_id: str, records: Sequence[ImportVehicle]
     ) -> ImportResult:
+        """Stage inserts or updates by dealership-local stock ID.
+
+        Called with validated records inside the import transaction. Batch-load matching rows,
+        preserve existing UUIDs, and update normalized search keys with display fields. Return
+        inserted/updated/unchanged counts before commit. Missing-file stocks are retained;
+        database errors propagate and the caller owns atomic commit.
+        """
         existing: dict[str, Vehicle] = {}
         source_ids = [record.source_id for record in records]
         for offset in range(0, len(source_ids), self._lookup_batch_size):

@@ -24,6 +24,10 @@ class Base(DeclarativeBase):
 
 
 def new_uuid() -> str:
+    """Return a fresh UUID4 as a string for ORM identity defaults; this does not insert a row.
+
+    SQLAlchemy invokes this identity default when a row needs a new primary key.
+    """
     return str(uuid4())
 
 
@@ -36,6 +40,8 @@ class Dealership(Base):
     default_connection: Mapped[str] = mapped_column(String(100), nullable=False)
 
 
+# Inventory has an internal UUID and a dealership-local source stock ID. Nullable
+# facts mean unknown; price_cents keeps stored currency arithmetic exact.
 class Vehicle(Base):
     __tablename__ = "vehicles"
     __table_args__ = (
@@ -52,6 +58,8 @@ class Vehicle(Base):
     )
     source_id: Mapped[str] = mapped_column(String(200), nullable=False)
     make: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Normalized search keys are stored alongside display text; filtering can use
+    # consistent equality without changing the spelling shown to customers.
     make_key: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     model_key: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -77,9 +85,13 @@ class Conversation(Base):
     )
     creation_id: Mapped[str] = mapped_column(String(36), nullable=False, default=new_uuid)
     __table_args__ = (
+        # Creation retries converge on one conversation within a dealership, even
+        # when requests reach different workers.
         Index("uq_conversation_creation", "dealership_id", "creation_id", unique=True),
     )
 
+    # Pin provider/model at creation so later configuration changes cannot silently
+    # move an existing conversation to a different model.
     connection_name: Mapped[str] = mapped_column(String(100), nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -90,15 +102,21 @@ class Conversation(Base):
     next_message_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+# A request tracks execution and retry identity separately from visible messages.
+# The user message survives failure; an assistant message exists only on completion.
 class ChatRequest(Base):
     __tablename__ = "chat_requests"
     __table_args__ = (
+        # The browser ID is unique within its conversation. Payload equality is checked
+        # by the service when replaying this identity.
         UniqueConstraint("conversation_id", "client_request_id", name="uq_chat_request_client"),
         UniqueConstraint("id", "conversation_id", name="uq_chat_request_id_conversation"),
         CheckConstraint(
             "status IN ('in_progress', 'completed', 'failed', 'interrupted')",
             name="ck_chat_request_status",
         ),
+        # Terminal status and its replayable HTTP outcome must be present together.
+        # The database rejects half-settled request records.
         CheckConstraint(
             "(status = 'in_progress' AND terminal_http_status IS NULL "
             "AND terminal_body IS NULL) OR "
@@ -106,6 +124,8 @@ class ChatRequest(Base):
             "AND terminal_body IS NOT NULL)",
             name="ck_chat_request_terminal",
         ),
+        # This partial unique index is the cross-worker admission lock: only one
+        # in_progress row may exist per conversation. Terminal status releases the claim.
         Index(
             "uq_chat_request_active_conversation",
             "conversation_id",
@@ -149,12 +169,16 @@ class ChatRequest(Base):
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
+        # A message must reference a request in the same conversation, not merely
+        # an existing request UUID from somewhere else.
         ForeignKeyConstraint(
             ["request_id", "conversation_id"],
             ["chat_requests.id", "chat_requests.conversation_id"],
             ondelete="CASCADE",
         ),
         UniqueConstraint("conversation_id", "sequence", name="uq_message_conversation_sequence"),
+        # At most one user and one assistant message per request prevents duplicate
+        # visible messages; failed/interrupted requests need not have an assistant row.
         UniqueConstraint("request_id", "role", name="uq_message_request_role"),
         CheckConstraint("role IN ('user', 'assistant')", name="ck_message_role"),
         Index("ix_message_conversation_sequence", "conversation_id", "sequence"),

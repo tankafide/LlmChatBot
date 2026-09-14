@@ -23,6 +23,11 @@ def request_bytes(
     settings: ModelSettings | None,
     parameters: ModelRequestParameters,
 ) -> bytes:
+    """Serialize messages, settings, and request parameters into bytes for size accounting. Return
+    the complete application envelope; this does not send a provider request.
+
+    Called by BudgetedModel.request before sending provider input.
+    """
     # Count the complete serialized envelope, including instructions, both tool schemas,
     # all tool/repair messages and JSON delimiters; never count just content strings.
     return (
@@ -36,6 +41,8 @@ def request_bytes(
     )
 
 
+# Wrap each provider request, including model repair attempts, with the same
+# input-size boundary and instrumentation.
 class BudgetedModel(WrapperModel):
     async def request(
         self,
@@ -43,6 +50,14 @@ class BudgetedModel(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
+        """Check input size, invoke the wrapped provider, and return ModelResponse. Raise
+        ChatProviderError/ChatProviderTimeoutError on size/provider failure; record metrics on
+        attempted calls.
+
+        Called by Pydantic AI for each model request.
+        """
+        # Measure effective settings and schemas too. History limits alone do not
+        # bound instructions, current tool evidence, or other request overhead.
         settings, parameters = self.prepare_request(model_settings, model_request_parameters)
         if len(request_bytes(messages, settings, parameters)) > MAX_PROVIDER_INPUT_BYTES:
             raise ChatProviderError("provider input exceeds limit")
@@ -54,6 +69,8 @@ class BudgetedModel(WrapperModel):
             metrics.provider_attempts += 1
         try:
             response = await self.wrapped.request(messages, settings, parameters)
+            # Count proposed tool calls separately from the final-answer tool. This metric
+            # describes model output, not proof that every proposed tool executed successfully.
             count = sum(
                 isinstance(part, ToolCallPart) and part.tool_name != "final_result"
                 for part in response.parts
@@ -62,6 +79,8 @@ class BudgetedModel(WrapperModel):
                 metrics.tool_calls += count
             outcome = "received"
             return response
+        # Convert external model errors into domain errors used by conversation
+        # settlement. Application tool execution occurs outside this exception boundary.
         except TimeoutError as exc:
             outcome = "timeout"
             raise ChatProviderTimeoutError from exc
@@ -69,6 +88,8 @@ class BudgetedModel(WrapperModel):
             raise
         except Exception as exc:
             # Only the external model call belongs here, never application tools.
+            # Log error classifications rather than raw exception text that could contain
+            # sensitive provider payloads or request details.
             logging.getLogger(__name__).warning(
                 "Chat provider failure: type=%s cause_type=%s status=%s",
                 type(exc).__name__,
