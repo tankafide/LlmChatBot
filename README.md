@@ -373,9 +373,8 @@ For the locked Linux check image plus the small frontend demonstration checks:
 python scripts/verify.py
 ```
 
-GitHub Actions runs this same verification every Monday at 14:17 UTC (9:17 a.m.
-Central daylight time / 8:17 a.m. Central standard time), and on demand from
-Actions → Verify → Run workflow. Pushes and pull requests do not trigger runs.
+GitHub Actions runs this same verification on every push. Pull requests do not
+trigger a separate run.
 
 Optional live checks are deliberately separate from deterministic tests because provider and NHTSA
 availability can change:
