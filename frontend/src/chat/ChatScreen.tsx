@@ -145,16 +145,23 @@ export function ChatScreen() {
         chat.messages.length &&
         el
       ) {
-        const frame = requestAnimationFrame(() => {
+        // The external runtime can render history after this effect's frames.
+        // Wait for the final stored message before measuring the transcript.
+        const lastMessage = chat.messages.at(-1);
+        let frame = 0;
+        const positionHistory = () => {
+          if (!el.querySelector(`[data-message-id="${lastMessage?.id}"]`)) {
+            frame = requestAnimationFrame(positionHistory);
+            return;
+          }
+          historyPositioned.current = true;
+          programmaticScroll.current = true;
+          el.scrollTop = el.scrollHeight;
           requestAnimationFrame(() => {
-            historyPositioned.current = true;
-            programmaticScroll.current = true;
-            el.scrollTop = el.scrollHeight;
-            requestAnimationFrame(() => {
-              programmaticScroll.current = false;
-            });
+            programmaticScroll.current = false;
           });
-        });
+        };
+        frame = requestAnimationFrame(positionHistory);
         return () => cancelAnimationFrame(frame);
       }
       return;

@@ -419,7 +419,10 @@ for (const [code, status] of [
     await page.getByRole("button", { name: "Check reply" }).click();
     await expect.poll(() => h.posts.length).toBe(2);
     expect(h.posts[1]).toEqual(h.posts[0]);
-    expect(await page.locator(".assistant").count()).toBe(0);
+    await expect(
+      page.getByRole("button", { name: "Check reply" }),
+    ).toBeVisible();
+    await expect(page.locator(".assistant")).toHaveCount(0);
   });
 }
 for (const [status, code] of [
