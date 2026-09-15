@@ -15,6 +15,45 @@ request outcomes, model replay units, and vehicle selection live in PostgreSQL, 
 do not erase context or cause completed requests to run twice. Database constraints and row locks
 coordinate multiple backend workers without holding a transaction across model or NHTSA waits.
 
+## Customer features and example interactions
+
+| Feature | Example customer interaction |
+| --- | --- |
+| Inventory search | “Show me 2022 RAV4s under $30,000.” |
+| Structured filters | “Do you have a Honda SUV under $25,000?” |
+| Vehicle details | “Tell me more about stock A123.” |
+| Choose from a displayed list | “What about the second one?” |
+| Follow-up questions about the selected vehicle | “What color is it?” or “Does it have all-wheel drive?” |
+| Recall lookup | “Does this vehicle have any recalls?” |
+| Crash-test ratings | “What are its NHTSA crash ratings?” |
+| Ambiguous crash-test choice | “NHTSA has multiple matching variants. Which body style applies?” |
+| No-result handling | “Show me 2030 Toyota trucks under $5,000.” The assistant explains that no matching inventory was found. |
+| Clarification | “Tell me about that car.” The assistant asks which vehicle the customer means when it cannot resolve a selection. |
+| Lost-response recovery | After a reload or lost response, the browser can check an accepted message request again without submitting a duplicate message. |
+
+A typical interaction is:
+
+```text
+Customer: Show me 2022 RAV4s under $30,000.
+AutoAssist: Shows matching vehicles.
+
+Customer: Tell me about the second one.
+AutoAssist: Resolves that displayed vehicle and gives supported details.
+
+Customer: Does it have recalls?
+AutoAssist: Looks up NHTSA recall information for that vehicle's
+year, make, and model. This is not VIN-specific recall confirmation.
+
+Customer: What about crash ratings?
+AutoAssist: Retrieves NHTSA ratings, or asks the customer to choose
+when NHTSA returns ambiguous variants.
+```
+
+The customer-facing scope is inventory questions and NHTSA safety information grounded in
+retrieved data. The prototype does not provide customer accounts, appointment booking, financing
+applications, live model-token streaming, message editing, or automatic reruns of interrupted model
+requests.
+
 ## Technology choices
 
 | Technology | Role | Why it fits this prototype |
